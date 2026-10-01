@@ -45,6 +45,7 @@
 
 #include <format>
 #include <string>
+#include <string_view>
 #include <utility>
 
 /**
@@ -84,20 +85,20 @@ namespace StormByte {
 				 * @brief Plain message under `StormByte.Crypto`.
 				 * @param message Exception text. Not a format string.
 				 */
-				explicit Exception(std::string message)
-					: StormByte::Exception(Path{"Crypto"}, "{}", std::move(message)) {}
+				explicit Exception(std::string_view message)
+					: StormByte::Exception(Path{"Crypto"}, "{}", message) {}
 
 				/**
 				 * @brief Copy constructor.
 				 * @param other Exception to copy.
 				 */
-				Exception(const Exception& other) = default;
+				Exception(const Exception& other);
 
 				/**
 				 * @brief Move constructor.
 				 * @param other Exception to move.
 				 */
-				Exception(Exception&& other) noexcept = default;
+				Exception(Exception&& other) noexcept;
 
 				/**
 				 * @brief Destructor. Defined in this module so `catch` matches across a DLL.
@@ -109,14 +110,14 @@ namespace StormByte {
 				 * @param other Exception to copy.
 				 * @return Reference to this exception.
 				 */
-				Exception& operator=(const Exception& other) = default;
+				Exception& operator=(const Exception& other);
 
 				/**
 				 * @brief Move assignment.
 				 * @param other Exception to move.
 				 * @return Reference to this exception.
 				 */
-				Exception& operator=(Exception&& other) noexcept = default;
+				Exception& operator=(Exception&& other) noexcept;
 				/** @} */
 
 			protected:
@@ -139,11 +140,11 @@ namespace StormByte {
 				 * @param child Segment under `Crypto`.
 				 * @param message Exception text. Not a format string.
 				 */
-				explicit Exception(Path child, std::string message)
+				explicit Exception(Path child, std::string_view message)
 					: StormByte::Exception(
 						Path{std::string("Crypto.") + std::string(child.text)},
 						"{}",
-						std::move(message)) {}
+						message) {}
 		};
 	}
 }

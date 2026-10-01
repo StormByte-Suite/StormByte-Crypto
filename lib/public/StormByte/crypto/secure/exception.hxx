@@ -45,6 +45,7 @@
 
 #include <format>
 #include <string>
+#include <string_view>
 #include <utility>
 
 /**
@@ -89,20 +90,20 @@ namespace StormByte {
 					 * @brief Plain message under `StormByte.Crypto.Secure`.
 					 * @param message Exception text. Not a format string.
 					 */
-					explicit Exception(std::string message)
-						: Crypto::Exception(Path{"Secure"}, std::move(message)) {}
+					explicit Exception(std::string_view message)
+						: Crypto::Exception(Path{"Secure"}, message) {}
 
 					/**
 					 * @brief Copy constructor.
 					 * @param other Exception to copy.
 					 */
-					Exception(const Exception& other) = default;
+					Exception(const Exception& other);
 
 					/**
 					 * @brief Move constructor.
 					 * @param other Exception to move.
 					 */
-					Exception(Exception&& other) noexcept = default;
+					Exception(Exception&& other) noexcept;
 
 					/**
 					 * @brief Destructor. Defined in this module so `catch` matches across a DLL.
@@ -114,14 +115,14 @@ namespace StormByte {
 					 * @param other Exception to copy.
 					 * @return Reference to this exception.
 					 */
-					Exception& operator=(const Exception& other) = default;
+					Exception& operator=(const Exception& other);
 
 					/**
 					 * @brief Move assignment.
 					 * @param other Exception to move.
 					 * @return Reference to this exception.
 					 */
-					Exception& operator=(Exception&& other) noexcept = default;
+					Exception& operator=(Exception&& other) noexcept;
 					/** @} */
 
 				protected:
@@ -144,10 +145,10 @@ namespace StormByte {
 					 * @param child Segment under `Secure`.
 					 * @param message Exception text. Not a format string.
 					 */
-					explicit Exception(Path child, std::string message)
+					explicit Exception(Path child, std::string_view message)
 						: Crypto::Exception(
 							Path{std::string("Secure.") + std::string(child.text)},
-							std::move(message)) {}
+							message) {}
 			};
 
 			/**
@@ -174,20 +175,20 @@ namespace StormByte {
 					 * @brief Plain message under `StormByte.Crypto.Secure.Vault`.
 					 * @param message Exception text. Not a format string.
 					 */
-					explicit VaultException(std::string message)
-						: Exception(Path{"Vault"}, std::move(message)) {}
+					explicit VaultException(std::string_view message)
+						: Exception(Path{"Vault"}, message) {}
 
 					/**
 					 * @brief Copy constructor.
 					 * @param other Exception to copy.
 					 */
-					VaultException(const VaultException& other) = default;
+					VaultException(const VaultException& other);
 
 					/**
 					 * @brief Move constructor.
 					 * @param other Exception to move.
 					 */
-					VaultException(VaultException&& other) noexcept = default;
+					VaultException(VaultException&& other) noexcept;
 
 					/**
 					 * @brief Destructor. Defined in this module so `catch` matches across a DLL.
@@ -199,14 +200,14 @@ namespace StormByte {
 					 * @param other Exception to copy.
 					 * @return Reference to this exception.
 					 */
-					VaultException& operator=(const VaultException& other) = default;
+					VaultException& operator=(const VaultException& other);
 
 					/**
 					 * @brief Move assignment.
 					 * @param other Exception to move.
 					 * @return Reference to this exception.
 					 */
-					VaultException& operator=(VaultException&& other) noexcept = default;
+					VaultException& operator=(VaultException&& other) noexcept;
 					/** @} */
 			};
 		}

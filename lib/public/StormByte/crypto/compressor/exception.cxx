@@ -42,4 +42,12 @@
 
 using namespace StormByte::Crypto::Compressor;
 
+Exception::Exception(const Exception& other) = default;
+
+Exception::Exception(Exception&& other) noexcept = default;
+
 Exception::~Exception() noexcept = default;
+
+Exception& Exception::operator=(const Exception& other) = default;
+
+Exception& Exception::operator=(Exception&& other) noexcept = default;

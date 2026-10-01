@@ -38,10 +38,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
+#include <StormByte/crypto/crypter/exception.hxx>
+#include <StormByte/crypto/exception.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/secure/vault.hxx>
+#include <StormByte/safe/string.hxx>
 #include <StormByte/test_handlers.h>
 
+#include <string_view>
 #include <utility>
 
 using namespace StormByte::Crypto;
@@ -87,6 +91,28 @@ int test_vault_get_missing() {
 	ASSERT_FALSE(fn_name, static_cast<bool>(missing));
 	const std::string message = missing.error()->what();
 	ASSERT_TRUE(fn_name, message.find("StormByte.Crypto.Secure.Vault") != std::string::npos);
+	RETURN_TEST(fn_name, 0);
+}
+
+int test_exception_string_view_and_dll_boundary() {
+	const std::string fn_name = "test_exception_string_view_and_dll_boundary";
+	const std::string message = "plain message";
+	Exception root{std::string_view{message}};
+	ASSERT_EQUAL(fn_name, std::string(root.what()), "StormByte.Crypto: plain message");
+
+	StormByte::Safe::String owned_message{std::string_view{"owned message"}};
+	Crypter::Exception component{owned_message};
+	ASSERT_EQUAL(fn_name, std::string(component.what()), "StormByte.Crypto.Crypter: owned message");
+
+	Crypter::Exception formatted{"failure {}", 42};
+	ASSERT_EQUAL(fn_name, std::string(formatted.what()), "StormByte.Crypto.Crypter: failure 42");
+
+	Crypter::Exception copied{component};
+	Crypter::Exception assigned{"before"};
+	assigned = copied;
+	Crypter::Exception moved{std::move(copied)};
+	ASSERT_EQUAL(fn_name, std::string(assigned.what()), "StormByte.Crypto.Crypter: owned message");
+	ASSERT_EQUAL(fn_name, std::string(moved.what()), "StormByte.Crypto.Crypter: owned message");
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -243,6 +269,7 @@ int main() {
 	result += test_vault_empty_on_construct();
 	result += test_vault_store_and_get();
 	result += test_vault_get_missing();
+	result += test_exception_string_view_and_dll_boundary();
 	result += test_vault_overwrite();
 	result += test_vault_remove();
 	result += test_vault_clear();

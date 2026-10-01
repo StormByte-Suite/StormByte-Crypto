@@ -42,6 +42,22 @@
 
 using namespace StormByte::Crypto::Secure;
 
+Exception::Exception(const Exception& other) = default;
+
+Exception::Exception(Exception&& other) noexcept = default;
+
 Exception::~Exception() noexcept = default;
 
+Exception& Exception::operator=(const Exception& other) = default;
+
+Exception& Exception::operator=(Exception&& other) noexcept = default;
+
+VaultException::VaultException(const VaultException& other) = default;
+
+VaultException::VaultException(VaultException&& other) noexcept = default;
+
 VaultException::~VaultException() noexcept = default;
+
+VaultException& VaultException::operator=(const VaultException& other) = default;
+
+VaultException& VaultException::operator=(VaultException&& other) noexcept = default;

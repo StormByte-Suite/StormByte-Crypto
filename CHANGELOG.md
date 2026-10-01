@@ -25,6 +25,7 @@ If you landed here from a release link and have not read the tree:
 ## [2.0.0] - 2026-10-02
 
 ### Changed
+- Exception message constructors now accept `std::string_view`; exception copy/move special members are defined out of line in their owning Crypto DLLs.
 - Port public text to Base's `StormByte::Safe::String` and polymorphic ownership to `StormByte::Safe::Clonable` / `Safe::Shared`; Password accepts mutable `std::string&` for wipeable caller-owned input.
 - Updated repository links to the StormByte-Suite organization and removed documentation for the retired standalone dependency.
 - Shared vs static follows CMake `BUILD_SHARED_LIBS` (declared in the project root, default ON). There is no `STORMBYTE_CRYPTO_SHARED` CMake option. When the library is shared, the compile definition `STORMBYTE_CRYPTO_SHARED` is still set so `visibility.h` can distinguish `dllexport` / `dllimport` / static. CI passes `-DBUILD_SHARED_LIBS=ON`. Vendored Crypto++ and BZip2 stay static BM components; their archives are closed onto consumers by the static sidecar.

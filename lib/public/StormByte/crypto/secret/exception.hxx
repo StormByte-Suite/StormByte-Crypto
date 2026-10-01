@@ -44,7 +44,7 @@
 #include <StormByte/crypto/visibility.h>
 
 #include <format>
-#include <string>
+#include <string_view>
 #include <utility>
 
 /**
@@ -86,20 +86,20 @@ namespace StormByte {
 					 * @brief Plain message under `StormByte.Crypto.Secret`.
 					 * @param message Exception text. Not a format string.
 					 */
-					explicit Exception(std::string message)
-						: Crypto::Exception(Path{"Secret"}, std::move(message)) {}
+					explicit Exception(std::string_view message)
+						: Crypto::Exception(Path{"Secret"}, message) {}
 
 					/**
 					 * @brief Copy constructor.
 					 * @param other Exception to copy.
 					 */
-					Exception(const Exception& other) = default;
+					Exception(const Exception& other);
 
 					/**
 					 * @brief Move constructor.
 					 * @param other Exception to move.
 					 */
-					Exception(Exception&& other) noexcept = default;
+					Exception(Exception&& other) noexcept;
 
 					/**
 					 * @brief Destructor. Defined in this module so `catch` matches across a DLL.
@@ -111,14 +111,14 @@ namespace StormByte {
 					 * @param other Exception to copy.
 					 * @return Reference to this exception.
 					 */
-					Exception& operator=(const Exception& other) = default;
+					Exception& operator=(const Exception& other);
 
 					/**
 					 * @brief Move assignment.
 					 * @param other Exception to move.
 					 * @return Reference to this exception.
 					 */
-					Exception& operator=(Exception&& other) noexcept = default;
+					Exception& operator=(Exception&& other) noexcept;
 					/** @} */
 			};
 		}
