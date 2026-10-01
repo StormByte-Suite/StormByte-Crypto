@@ -60,15 +60,15 @@ Do not repeat `STORMBYTE_CRYPTO_PUBLIC` on an ordinary `.cxx` definition. Privat
 
 Public leaves are `final`. Their destructor is declared in the header and defined out of line in the `.cxx` (`= default`).
 
-Values that leave the shared library are `StormByte::String::String`, `StormByte::String::WString`, `CString`, `WCString`, `Size`, `ByteSize`, `BinaryData`, or a `const char*` owned by this library. Do not return `std::string` as the object that crosses the boundary. Non-secret public text is ingested as `std::string_view` and copied inside this module.
+Values that leave the shared library are `StormByte::Safe::String`, `StormByte::Safe::WString`, `CString`, `WCString`, `Size`, `ByteSize`, `BinaryData`, or a `const char*` owned by this library. Do not return `std::string` as the object that crosses the boundary. Non-secret public text is ingested as `std::string_view` and copied inside this module.
 
-`Secure::Password` is the exception for secrets: take a non-const `std::string&` or `String&` (copy then wipe the caller) or `const char*` / `const void*` + `ByteSize`. Do not take `string_view` for a password. Do not move a `std::string` across the DLL heap.
+`Secure::Password` is the exception for secrets: take a non-const `std::string&` (copy then wipe the caller) or `const char*` / `const void*` + `ByteSize`. Do not take `string_view` for a password. Do not move a `std::string` across the DLL heap.
 
 Installed headers never mention `CryptoPP::`. Crypto++ stays under `lib/private` and `thirdparty`.
 
 ## Doxygen
 
-Document every public declaration except `= delete`. Namespaces in a header get a `@namespace` block. Large classes use `@name` groups. `@ref` uses the qualified name (`StormByte::Crypto::Secure::Password`, `StormByte::String::String`). Align member `///<` comments to the same column when they fit.
+Document every public declaration except `= delete`. Namespaces in a header get a `@namespace` block. Large classes use `@name` groups. `@ref` uses the qualified name (`StormByte::Crypto::Secure::Password`, `StormByte::Safe::String`). Align member `///<` comments to the same column when they fit.
 
 Wrap `extern template` noise in `/// @cond` / `/// @endcond` so it does not show up as a page of instantiations.
 

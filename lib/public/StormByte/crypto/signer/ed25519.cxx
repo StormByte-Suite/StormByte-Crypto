@@ -117,7 +117,7 @@ namespace {
 		std::unique_ptr<CryptoPP::SignatureVerificationFilter> filter;
 		bool ready = false;
 
-		explicit Ed25519VerifyBox(const StormByte::String::String& pubKeyB64) {
+		explicit Ed25519VerifyBox(const StormByte::Safe::String& pubKeyB64) {
 			const std::string pubKey { static_cast<std::string_view>(pubKeyB64) };
 			CryptoPP::SecByteBlock pubRaw =
 				StormByte::Crypto::Engine::KeyPair::DecodeSecBlockBase64(pubKey);

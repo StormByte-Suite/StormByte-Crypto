@@ -43,7 +43,6 @@
 #include <StormByte/byte_size.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/size.hxx>
-#include <StormByte/string/string.hxx>
 
 #include <memory>
 #include <string>
@@ -81,7 +80,7 @@ namespace StormByte {
 			 *
 			 * ## Why ingest is a non-const reference, not a view and not a move
 			 *
-			 * A password that stays in the caller's `std::string` / @ref StormByte::String::String
+			 * A password that stays in the caller's `std::string`
 			 * after construction is a leftover secret. `std::string_view` cannot wipe
 			 * that source (it does not own it) and would encourage keeping the
 			 * original buffer alive. Passing `std::string` by value or by move across
@@ -89,8 +88,7 @@ namespace StormByte {
 			 * caller's CRT/heap, and destroying or moving it inside this library can
 			 * free the wrong heap.
 			 *
-			 * Therefore the caller *cedes* a non-const `std::string&` or
-			 * `StormByte::String::String&`. This constructor copies the bytes into
+			 * Therefore the caller *cedes* a non-const `std::string&`. This constructor copies the bytes into
 			 * wiped storage owned by this library and then overwrites and clears the
 			 * caller's object. After return the argument is empty; the only remaining
 			 * copy is the one Password owns.
@@ -114,12 +112,6 @@ namespace StormByte {
 					 * @param value Password characters. Emptied and zeroed on return.
 					 */
 					explicit Password(std::string& value) noexcept;
-
-					/**
-					 * @brief From a String. Copies into secure storage and wipes @p value.
-					 * @param value Password characters. Cleared on return.
-					 */
-					explicit Password(StormByte::String::String& value) noexcept;
 
 					/**
 					 * @brief From a C string up to the terminator. The source is not wiped.

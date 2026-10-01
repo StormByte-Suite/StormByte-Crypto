@@ -39,8 +39,7 @@ if(ENABLE_DOC)
 		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/lib/public"
 		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/thirdparty/StormByte/logger/src/lib/public"
 		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/thirdparty/StormByte/system/src/lib/public"
-		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/thirdparty/StormByte/system/src/thirdparty/StormByte/string/src"
-		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/thirdparty/StormByte/system/src/thirdparty/StormByte/string/src/thirdparty/StormByte/base/src"
+		"${CMAKE_SOURCE_DIR}/thirdparty/StormByte/buffer/src/thirdparty/StormByte/system/src/thirdparty/StormByte/base/src/lib/public"
 	)
 	set(DOXYGEN_STRIP_FROM_PATH "${CMAKE_SOURCE_DIR}")
 	set(DOXYGEN_STRIP_FROM_INC_PATH "${CMAKE_SOURCE_DIR}/lib/public")
@@ -54,7 +53,6 @@ if(ENABLE_DOC)
 		"STORMBYTE_CRYPTO_PRIVATE:="
 		"STORMBYTE_BUFFER_PUBLIC:="
 		"STORMBYTE_LOGGER_PUBLIC:="
-		"STORMBYTE_STRING_PUBLIC:="
 		"STORMBYTE_PUBLIC:="
 		"WINDOWS="
 		"LINUX="

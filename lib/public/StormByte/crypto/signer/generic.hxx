@@ -41,7 +41,7 @@
 #pragma once
 
 #include <StormByte/buffer/consumer.hxx>
-#include <StormByte/clonable.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
@@ -80,7 +80,7 @@ namespace StormByte {
 			 * @class Generic
 			 * @brief Abstract signer. Concrete algorithms derive from this.
 			 */
-			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Clonable<Generic> {
+			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
 					/**
 					 * @name Construction

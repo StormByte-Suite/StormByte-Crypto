@@ -43,7 +43,6 @@
 #include <StormByte/crypto/secure/password.hxx>
 
 #include <cstring>
-#include <string_view>
 
 using namespace StormByte::Crypto::Secure;
 
@@ -62,16 +61,6 @@ Password::Password(std::string& value) noexcept {
 	const StormByte::ByteSize n { value.size() };
 	auto* content = new StormByte::Crypto::Helpers::SecureContent(value.data(), static_cast<std::size_t>(n));
 	StormByte::Crypto::Helpers::SecureWipe(value);
-	m_data.reset(content, SecureContentDeleter{});
-}
-
-Password::Password(StormByte::String::String& value) noexcept {
-	const std::string_view view { value };
-	const StormByte::ByteSize n { view.size() };
-	auto* content = new StormByte::Crypto::Helpers::SecureContent(view.data(), static_cast<std::size_t>(n));
-	std::string scratch { view };
-	StormByte::Crypto::Helpers::SecureWipe(scratch);
-	value = StormByte::String::String{};
 	m_data.reset(content, SecureContentDeleter{});
 }
 

@@ -40,11 +40,11 @@
 
 #pragma once
 
-#include <StormByte/clonable.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
-#include <StormByte/string/string.hxx>
+#include <StormByte/safe/string.hxx>
 
 #include <filesystem>
 #include <optional>
@@ -92,11 +92,11 @@ namespace StormByte {
 			 * @class Generic
 			 * @brief Abstract keypair. Concrete algorithms derive from this.
 			 *
-			 * Public key is a non-secret @ref StormByte::String::String (typically Base64 SPKI DER).
+			 * Public key is a non-secret @ref StormByte::Safe::String (typically Base64 SPKI DER).
 			 * Private key, when present, is a @ref StormByte::Crypto::Secure::Password
 			 * holding PKCS#8 or native DER and is wiped with the last owner.
 			 */
-			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Clonable<Generic> {
+			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
 					/**
 					 * @name Construction
@@ -146,7 +146,7 @@ namespace StormByte {
 					 * @brief Public key string.
 					 * @return Public material owned by this keypair.
 					 */
-					inline const StormByte::String::String& PublicKey() const noexcept {
+					inline const StormByte::Safe::String& PublicKey() const noexcept {
 						return m_public_key;
 					}
 
@@ -217,7 +217,7 @@ namespace StormByte {
 
 				protected:
 					enum Type m_type;						///< Algorithm
-					StormByte::String::String m_public_key;	///< Public material
+					StormByte::Safe::String m_public_key;	///< Public material
 					std::optional<Secure::Password> m_private_key;	///< Private material, if any
 
 					/**
@@ -226,7 +226,7 @@ namespace StormByte {
 					 * @param public_key Public material.
 					 * @param private_key Optional private Password.
 					 */
-					inline Generic(enum Type type, StormByte::String::String public_key, std::optional<Secure::Password> private_key = std::nullopt):
+					inline Generic(enum Type type, StormByte::Safe::String public_key, std::optional<Secure::Password> private_key = std::nullopt):
 						m_type(type),
 						m_public_key(std::move(public_key)),
 						m_private_key(std::move(private_key)) {}

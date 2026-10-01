@@ -21,7 +21,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 - **Asymmetric crypter** — RSA OAEP-SHA and ECC ECIES. `Strategy::Native` is one PK transform per blob. `Strategy::Hybrid` wraps a random AES-256-GCM session key. Decrypt auto-detects the envelope.
 - **Signer** — DSA, RSA PKCS#1 v1.5 + SHA-256, ECDSA, Ed25519. Block and streaming sign / verify.
 - **Secret** — ECDH on secp256r1 / secp384r1 / secp521r1, and X25519. The shared secret is a `Secure::Password`, not a `std::string`.
-- **KeyPair** — Generate, persist PEM or DER, optional PKCS#8 (PBES2 + PBKDF2 + AES-256-CBC, OpenSSL-compatible). Public key travels as `StormByte::String::String` (Base64 SPKI); private key stays in a `Secure::Password`. Handles are `Clonable` + `MakePointer` / `Shared` (`KeyPair::Generic::PointerType`).
+- **KeyPair** — Generate, persist PEM or DER, optional PKCS#8 (PBES2 + PBKDF2 + AES-256-CBC, OpenSSL-compatible). Public key travels as `StormByte::Safe::String` (Base64 SPKI); private key stays in a `Secure::Password`. Handles are `StormByte::Safe::Clonable` with `Safe::Shared` (`KeyPair::Generic::PointerType`).
 - **Secure::Password / Secure::Vault** — wiped secret buffer and named store under `StormByte::Crypto::Secure`. Last owner zeros the bytes. Vault is movable, not copyable. `Password::Size()` is `StormByte::ByteSize`. A missing `Vault::Get` is `StormByte.Crypto.Secure.Vault: …`.
 - **Buffer-first I/O** — `std::span<const std::byte>` → `Buffer::WriteOnly` for blocks; `Buffer::Consumer` in / out for pipelines (Network, Multimedia). Octet payloads are `StormByte::BinaryData`. Abstract counts use `StormByte::Size`; octet lengths use `StormByte::ByteSize`. Non-secret public text is ingested as `std::string_view`.
 
@@ -105,7 +105,7 @@ Ingest is deliberately not `std::string_view` and not `std::string` by value.
 
 - A view cannot wipe the caller's buffer, so the secret would stay in the program after construction.
 - Passing `std::string` by value or by move across a DLL is unsafe: the buffer was allocated on the caller's heap. Destroying it inside this library can free the wrong CRT.
-- Therefore the caller *cedes* a non-const `std::string&` or `StormByte::String::String&`. The constructor copies into wiped storage owned by this module and then overwrites and clears the argument. After return the only remaining copy is the one `Password` holds.
+- Therefore the caller *cedes* a non-const `std::string&`. The constructor copies into wiped storage owned by this module and then overwrites and clears the argument. After return the only remaining copy is the one `Password` holds.
 - Literals use `explicit Password(const char*)`. They are copied; the source is not wiped (it lives in read-only storage). Use that form for tests and placeholders, not for production secrets kept in source.
 - Raw bytes (`const void*` + `ByteSize`) are copied and not wiped; the caller owns the source.
 
@@ -249,7 +249,7 @@ auto loaded = KeyPair::Load("/tmp/keys/app.pub.pem", "/tmp/keys/app.pem");
 auto enc    = KeyPair::Load("/tmp/keys/app-enc.pub.pem", "/tmp/keys/app-enc.pem", wrap);
 ```
 
-Wrong or missing wrap password fails closed. Type comes from the OID (RSA, DSA, EC, Ed25519, X25519). Generate → Save → Load stays usable for encrypt, sign and share. X25519 also understands raw 32-byte library form. `PublicKey()` is `const StormByte::String::String&`; convert with `std::string{std::string_view{kp->PublicKey()}}` if you need a `std::string`.
+Wrong or missing wrap password fails closed. Type comes from the OID (RSA, DSA, EC, Ed25519, X25519). Generate → Save → Load stays usable for encrypt, sign and share. X25519 also understands raw 32-byte library form. `PublicKey()` is `const StormByte::Safe::String&`; convert with `std::string{std::string_view{kp->PublicKey()}}` if you need a `std::string`.
 
 ### Sign and verify
 

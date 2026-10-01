@@ -46,7 +46,7 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
 #include <StormByte/crypto/visibility.h>
-#include <StormByte/string/string.hxx>
+#include <StormByte/safe/string.hxx>
 
 #include <base64.h>
 #include <filters.h>
@@ -141,13 +141,13 @@ namespace StormByte {
 				}
 
 				/**
-				 * @brief Deserialize a key from a public @ref StormByte::String::String.
+				 * @brief Deserialize a key from a public @ref StormByte::Safe::String.
 				 * @tparam KeyT Key type.
 				 * @param keyString Base64 public key.
 				 * @return Shared key, or nullptr.
 				 */
 				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const StormByte::String::String& keyString) noexcept {
+				std::shared_ptr<KeyT> DeserializeKey(const StormByte::Safe::String& keyString) noexcept {
 					return DeserializeKey<KeyT>(std::string(static_cast<std::string_view>(keyString)));
 				}
 
@@ -195,7 +195,7 @@ namespace StormByte {
 				 * @return Shared KeyPairT, or nullptr.
 				 */
 				template<typename KeyPairT, typename AgreementT, typename... CtorArgs>
-				std::shared_ptr<KeyPairT> AgreementGenerateKeyPair(CtorArgs&&... args) noexcept {
+				typename KeyPairT::PointerType AgreementGenerateKeyPair(CtorArgs&&... args) noexcept {
 					try {
 						AgreementT agr(std::forward<CtorArgs>(args)...);
 						CryptoPP::SecByteBlock priv(agr.PrivateKeyLength());
@@ -206,7 +206,7 @@ namespace StormByte {
 						Secure::Password privPwd = PasswordFromSecBlock(priv);
 						Helpers::SecureWipe(pub);
 
-						return std::make_shared<KeyPairT>(std::move(pubStr), std::move(privPwd));
+						return KeyPairT::template MakePointer<KeyPairT>(std::move(pubStr), std::move(privPwd));
 					} catch (...) {
 						return nullptr;
 					}

@@ -41,7 +41,7 @@
 #pragma once
 
 #include <StormByte/buffer/consumer.hxx>
-#include <StormByte/clonable.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/type_traits.hxx>
@@ -76,7 +76,7 @@ namespace StormByte {
 			 * @class Generic
 			 * @brief Abstract compressor. Concrete codecs derive from this.
 			 */
-			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Clonable<Generic> {
+			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
 					/**
 					 * @name Construction

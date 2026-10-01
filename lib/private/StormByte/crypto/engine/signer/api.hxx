@@ -47,7 +47,7 @@
 #include <StormByte/crypto/random.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
-#include <StormByte/string/string.hxx>
+#include <StormByte/safe/string.hxx>
 
 #include <filters.h>
 #include <memory>
@@ -174,10 +174,10 @@ namespace StormByte {
 						}
 
 						/**
-						 * @brief Load the public key from a @ref StormByte::String::String.
+						 * @brief Load the public key from a @ref StormByte::Safe::String.
 						 * @param pubKey Base64 public key.
 						 */
-						explicit ConcreteVerifyBox(const StormByte::String::String& pubKey):
+						explicit ConcreteVerifyBox(const StormByte::Safe::String& pubKey):
 							ConcreteVerifyBox(std::string(static_cast<std::string_view>(pubKey))) {}
 
 						/**
@@ -324,7 +324,7 @@ namespace StormByte {
 				}
 
 				/**
-				 * @brief One-shot verify from a public @ref StormByte::String::String.
+				 * @brief One-shot verify from a public @ref StormByte::Safe::String.
 				 * @tparam VerifierT Crypto++ verifier type.
 				 * @tparam PublicKeyT Crypto++ public key type.
 				 * @param data Input.
@@ -333,7 +333,7 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(std::span<const std::byte> data, const std::string& signature, const StormByte::String::String& pubKey) noexcept {
+				bool Verify(std::span<const std::byte> data, const std::string& signature, const StormByte::Safe::String& pubKey) noexcept {
 					return Verify<VerifierT, PublicKeyT>(data, signature, std::string(static_cast<std::string_view>(pubKey)));
 				}
 
@@ -371,7 +371,7 @@ namespace StormByte {
 				}
 
 				/**
-				 * @brief Streaming verify from a public @ref StormByte::String::String.
+				 * @brief Streaming verify from a public @ref StormByte::Safe::String.
 				 * @tparam VerifierT Crypto++ verifier type.
 				 * @tparam PublicKeyT Crypto++ public key type.
 				 * @param consumer Input consumer.
@@ -381,7 +381,7 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(Buffer::Consumer consumer, const std::string& signature, const StormByte::String::String& pubKey, ReadMode mode) noexcept {
+				bool Verify(Buffer::Consumer consumer, const std::string& signature, const StormByte::Safe::String& pubKey, ReadMode mode) noexcept {
 					return Verify<VerifierT, PublicKeyT>(std::move(consumer), signature, std::string(static_cast<std::string_view>(pubKey)), mode);
 				}
 

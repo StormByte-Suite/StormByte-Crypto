@@ -40,11 +40,10 @@
 
 #pragma once
 
-#include <StormByte/clonable.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
-#include <StormByte/string/string.hxx>
 
 #include <optional>
 #include <string_view>
@@ -79,7 +78,7 @@ namespace StormByte {
 			 *
 			 * Holds a local keypair and derives a shared secret from a peer public key.
 			 */
-			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Clonable<Generic> {
+			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
 					/**
 					 * @name Construction

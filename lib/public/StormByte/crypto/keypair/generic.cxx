@@ -50,7 +50,6 @@
 #include <StormByte/crypto/keypair/x25519.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
-#include <StormByte/string/string.hxx>
 
 #include <aes.h>
 #include <algorithm>
