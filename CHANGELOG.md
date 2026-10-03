@@ -22,7 +22,7 @@ If you landed here from a release link and have not read the tree:
 
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.0...HEAD
 
-## [2.0.0] - 2026-10-02
+## [2.0.0] - 2026-10-06
 
 ### Changed
 - Exception message constructors now accept `std::string_view`; exception copy/move special members are defined out of line in their owning Crypto DLLs.
