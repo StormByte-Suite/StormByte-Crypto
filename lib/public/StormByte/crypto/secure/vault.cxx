@@ -42,36 +42,34 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 using namespace StormByte::Crypto::Secure;
 
-Vault::~Vault() noexcept {
-	Clear();
-}
+struct Vault::Storage {
+	std::unordered_map<std::string, Password> Passwords;
+};
 
-Vault::Vault(Vault&& other) noexcept
-	: m_passwords(std::move(other.m_passwords))
-{
-	other.m_passwords.clear();
-}
+Vault::Vault(): m_storage(StormByte::Safe::Unique<Storage>::MakePointer<Storage>()) {}
 
-Vault& Vault::operator=(Vault&& other) noexcept {
-	if (this != &other) {
-		Clear();
-		m_passwords = std::move(other.m_passwords);
-		other.m_passwords.clear();
-	}
+Vault::~Vault() noexcept = default;
 
-	return *this;
-}
+Vault::Vault(Vault&& other) noexcept = default;
+
+Vault& Vault::operator=(Vault&& other) noexcept = default;
 
 void Vault::Store(std::string_view name, Password password) noexcept {
-	m_passwords.insert_or_assign(std::string{name}, std::move(password));
+	if (!m_storage)
+		m_storage = StormByte::Safe::Unique<Storage>::MakePointer<Storage>();
+	m_storage->Passwords.insert_or_assign(std::string{name}, std::move(password));
 }
 
 ExpectedPassword Vault::Get(std::string_view name) const noexcept {
-	auto it = m_passwords.find(std::string{name});
-	if (it == m_passwords.end()) {
+	if (!m_storage) {
+		return StormByte::Unexpected<VaultException>("Password '{}' not found", std::string{name});
+	}
+	auto it = m_storage->Passwords.find(std::string{name});
+	if (it == m_storage->Passwords.end()) {
 		return StormByte::Unexpected<VaultException>("Password '{}' not found", std::string{name});
 	}
 
@@ -79,21 +77,23 @@ ExpectedPassword Vault::Get(std::string_view name) const noexcept {
 }
 
 bool Vault::Contains(std::string_view name) const noexcept {
-	return m_passwords.contains(std::string{name});
+	return m_storage && m_storage->Passwords.contains(std::string{name});
 }
 
 void Vault::Remove(std::string_view name) noexcept {
-	m_passwords.erase(std::string{name});
+	if (m_storage)
+		m_storage->Passwords.erase(std::string{name});
 }
 
 void Vault::Clear() noexcept {
-	m_passwords.clear();
+	if (m_storage)
+		m_storage->Passwords.clear();
 }
 
 StormByte::Size Vault::Size() const noexcept {
-	return StormByte::Size { m_passwords.size() };
+	return StormByte::Size { m_storage ? m_storage->Passwords.size() : 0 };
 }
 
 bool Vault::Empty() const noexcept {
-	return m_passwords.empty();
+	return !m_storage || m_storage->Passwords.empty();
 }

@@ -48,6 +48,10 @@ SecureContent::SecureContent(const void* data, std::size_t size) noexcept
 		std::memcpy(m_block.data(), data, size);
 }
 
+SecureContent::~SecureContent() noexcept {
+	Wipe();
+}
+
 void SecureContent::Wipe() noexcept {
 	if (m_block.size() > 0)
 		m_block.CleanNew(0);

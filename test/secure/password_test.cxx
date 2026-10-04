@@ -64,8 +64,39 @@ int test_password_construct_from_string() {
 	const std::string fn_name = "test_password_construct_from_string";
 	std::string raw = "from-std-string";
 	Password p(raw);
+	ASSERT_TRUE(fn_name, raw.empty());
 	ASSERT_FALSE(fn_name, p.Empty());
 	ASSERT_EQUAL(fn_name, p.Size(), StormByte::ByteSize{std::string("from-std-string").size()});
+	RETURN_TEST(fn_name, 0);
+}
+
+int test_password_construct_from_safe_string() {
+	const std::string fn_name = "test_password_construct_from_safe_string";
+	const std::string bytes = std::string(4096, 'x') + "tail";
+	StormByte::Safe::String raw{std::string_view{bytes}};
+	Password password(raw);
+	ASSERT_TRUE(fn_name, raw.empty());
+	ASSERT_EQUAL(fn_name, bytes.size(), static_cast<std::size_t>(password.Size()));
+	ASSERT_TRUE(fn_name, password == Password(bytes.data(), StormByte::ByteSize{bytes.size()}));
+	raw = StormByte::Safe::String("reused");
+	Password reused(raw);
+	ASSERT_TRUE(fn_name, raw.empty());
+	ASSERT_TRUE(fn_name, reused == Password("reused"));
+	StormByte::Safe::String empty;
+	Password empty_password(empty);
+	ASSERT_TRUE(fn_name, empty.empty());
+	ASSERT_TRUE(fn_name, empty_password.Empty());
+	RETURN_TEST(fn_name, 0);
+}
+
+int test_password_construct_from_long_string() {
+	const std::string fn_name = "test_password_construct_from_long_string";
+	std::string raw(4096, 's');
+	raw[1024] = '\0';
+	Password expected(raw.data(), StormByte::ByteSize{raw.size()});
+	Password password(raw);
+	ASSERT_TRUE(fn_name, raw.empty());
+	ASSERT_TRUE(fn_name, password == expected);
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -155,6 +186,21 @@ int test_password_move_leaves_usable_source() {
 	RETURN_TEST(fn_name, 0);
 }
 
+int test_password_shared_owner_survives_scope() {
+	const std::string fn_name = "test_password_shared_owner_survives_scope";
+	Password survivor("");
+	{
+		StormByte::Safe::String raw("shared secret");
+		Password original(raw);
+		survivor = original;
+	}
+	ASSERT_TRUE(fn_name, survivor == Password("shared secret"));
+	Password moved(std::move(survivor));
+	ASSERT_TRUE(fn_name, survivor.Empty());
+	ASSERT_TRUE(fn_name, moved == Password("shared secret"));
+	RETURN_TEST(fn_name, 0);
+}
+
 int main() {
 	int result = 0;
 
@@ -163,6 +209,8 @@ int main() {
 	// -------------------
 	result += test_password_construct_from_c_string();
 	result += test_password_construct_from_string();
+	result += test_password_construct_from_safe_string();
+	result += test_password_construct_from_long_string();
 	result += test_password_construct_from_bytes();
 	result += test_password_empty();
 
@@ -179,6 +227,7 @@ int main() {
 	// -------------------
 	result += test_password_copy_shares_content();
 	result += test_password_move_leaves_usable_source();
+	result += test_password_shared_owner_survives_scope();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

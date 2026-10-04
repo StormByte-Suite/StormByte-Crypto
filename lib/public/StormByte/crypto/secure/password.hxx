@@ -42,9 +42,11 @@
 
 #include <StormByte/byte_size.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/platform.h>
+#include <StormByte/safe/pointers.hxx>
+#include <StormByte/safe/string.hxx>
 #include <StormByte/size.hxx>
 
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -72,7 +74,7 @@ namespace StormByte {
 			 * @class Password
 			 * @brief Shared, wiped container for passwords and raw key material.
 			 *
-			 * Bytes live in shared storage allocated by this library and are wiped
+			 * Bytes live in Crypto-owned secure storage behind a Safe::Shared owner and are wiped
 			 * when the last owner is destroyed. Copies share the same buffer. There
 			 * is no public view of the raw bytes: once ingested, the secret only
 			 * exists inside this object (and any @ref StormByte::Crypto::Secure::Vault
@@ -88,9 +90,10 @@ namespace StormByte {
 			 * caller's CRT/heap, and destroying or moving it inside this library can
 			 * free the wrong heap.
 			 *
-			 * Therefore the caller *cedes* a non-const `std::string&`. This constructor copies the bytes into
-			 * wiped storage owned by this library and then overwrites and clears the
-			 * caller's object. After return the argument is empty; the only remaining
+			 * Therefore the caller *cedes* a non-const `std::string&` or `Safe::String&`.
+			 * Construction copies the bytes into wiped storage and then overwrites and clears the
+			 * source. The std::string overload is force-inlined so its storage operations
+			 * remain in the caller's CRT. After return the argument is empty; the only remaining
 			 * copy is the one Password owns.
 			 *
 			 * String literals (`Password("secret")`) use `const char*`. They are
@@ -108,10 +111,25 @@ namespace StormByte {
 					 * @{
 					 */
 					/**
-					 * @brief From a std::string. Copies into secure storage and wipes @p value.
+					 * @brief From a std::string. Copies into secure storage and wipes @p value in the caller's CRT.
 					 * @param value Password characters. Emptied and zeroed on return.
 					 */
-					explicit Password(std::string& value) noexcept;
+					STORMBYTE_FORCE_INLINE explicit Password(std::string& value) noexcept
+						: Password(value.data(), StormByte::ByteSize{value.size()}) {
+						volatile char* bytes = value.data();
+						for (std::size_t index = 0; index < value.size(); ++index)
+							bytes[index] = 0;
+						value.clear();
+						value.shrink_to_fit();
+					}
+
+					/**
+					 * @brief From DLL-safe text. Copies into secure storage and wipes @p value.
+					 * @param value Password characters. Emptied and zeroed on return.
+					 * @note Text must not contain embedded NUL bytes: Safe::String reports length up to the first NUL.
+					 * Use std::string& or raw bytes with an explicit size for binary secrets.
+					 */
+					explicit Password(StormByte::Safe::String& value) noexcept;
 
 					/**
 					 * @brief From a C string up to the terminator. The source is not wiped.
@@ -192,7 +210,7 @@ namespace StormByte {
 				private:
 					friend struct Helpers::PasswordAccess;
 
-					std::shared_ptr<Helpers::SecureContent> m_data;	///< Shared wiped storage
+					StormByte::Safe::Shared<Helpers::SecureContent> m_data;	///< DLL-safe shared owner of wiped storage
 			};
 		}
 	}

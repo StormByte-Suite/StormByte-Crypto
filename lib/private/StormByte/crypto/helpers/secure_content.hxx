@@ -64,6 +64,9 @@ namespace StormByte::Crypto::Helpers {
 			 */
 			SecureContent(const void* data, std::size_t size) noexcept;
 
+			/** @brief Wipe the bytes before releasing the backing storage. */
+			~SecureContent() noexcept;
+
 			/**
 			 * @brief Copy constructor (deleted).
 			 */

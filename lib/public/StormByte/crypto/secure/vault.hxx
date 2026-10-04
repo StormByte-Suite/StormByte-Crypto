@@ -44,11 +44,10 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/expected.hxx>
+#include <StormByte/safe/pointers.hxx>
 #include <StormByte/size.hxx>
 
-#include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 
 /**
@@ -87,7 +86,7 @@ namespace StormByte {
 					/**
 					 * @brief Empty vault.
 					 */
-					Vault() = default;
+					Vault();
 
 					Vault(const Vault&) = delete;
 
@@ -158,7 +157,9 @@ namespace StormByte {
 					bool Empty() const noexcept;
 
 				private:
-					std::unordered_map<std::string, Password> m_passwords;	///< Named passwords
+					/** @brief Named-password storage constructed and destroyed inside Crypto. */
+					struct Storage;
+					StormByte::Safe::Unique<Storage> m_storage;	///< DLL-safe owner of named passwords
 			};
 		}
 	}

@@ -41,6 +41,7 @@
 #pragma once
 
 #include <StormByte/binary_data.hxx>
+#include <StormByte/safe/string.hxx>
 
 #include <cstddef>
 #include <cstring>
@@ -65,6 +66,18 @@ namespace StormByte {
 		 * @brief Private helpers of the Crypto module.
 		 */
 		namespace Helpers {
+			/**
+			 * @brief Zero the existing characters before releasing DLL-safe text storage.
+			 * @param value Text to wipe and clear.
+			 */
+			inline void SecureWipe(StormByte::Safe::String& value) noexcept {
+				volatile char* bytes = value.data();
+				const std::size_t count = static_cast<std::size_t>(value.size());
+				for (std::size_t index = 0; index < count; ++index)
+					bytes[index] = 0;
+				value.clear();
+			}
+
 			/**
 			 * @brief Zero and clear a string.
 			 * @param s String to wipe.

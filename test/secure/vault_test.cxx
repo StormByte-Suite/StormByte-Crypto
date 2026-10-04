@@ -197,6 +197,13 @@ int test_vault_move_construct() {
 	auto pwd = moved.Get("moved");
 	ASSERT_TRUE(fn_name, static_cast<bool>(pwd));
 	ASSERT_TRUE(fn_name, *pwd == Password("payload"));
+	ASSERT_FALSE(fn_name, original.Contains("moved"));
+	ASSERT_FALSE(fn_name, static_cast<bool>(original.Get("moved")));
+	original.Remove("moved");
+	original.Clear();
+	original.Store("reused", Password("new payload"));
+	ASSERT_TRUE(fn_name, original.Contains("reused"));
+	ASSERT_FALSE(fn_name, moved.Contains("reused"));
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -216,6 +223,15 @@ int test_vault_move_assign() {
 	auto alpha = dst.Get("alpha");
 	ASSERT_TRUE(fn_name, static_cast<bool>(alpha));
 	ASSERT_TRUE(fn_name, *alpha == Password("111"));
+	src.Store("reused", Password("333"));
+	ASSERT_TRUE(fn_name, src.Contains("reused"));
+	ASSERT_FALSE(fn_name, dst.Contains("reused"));
+	const auto retained = dst.Get("beta");
+	dst.Clear();
+	ASSERT_TRUE(fn_name, *retained == Password("222"));
+	dst = std::move(src);
+	ASSERT_TRUE(fn_name, src.Empty());
+	ASSERT_TRUE(fn_name, dst.Contains("reused"));
 	RETURN_TEST(fn_name, 0);
 }
 

@@ -99,15 +99,17 @@ Concrete types (`Crypter::AES_GCM`, `KeyPair::X25519`, `Signer::ED25519`, …) c
 
 ### Password and Vault
 
-`Secure::Password` is the only public container for secret bytes (passphrases, private key DER, shared secrets). Copies share the buffer; the last owner wipes it. `Size()` is `StormByte::ByteSize`.
+`Secure::Password` is the only public container for secret bytes (passphrases, private key DER, shared secrets). A `Safe::Shared` owner retains Crypto's secure buffer; copies share it and the last owner wipes it. `Size()` is `StormByte::ByteSize`. Ordinary `Safe::String` and `BinaryData` are not automatically wiped secret containers.
 
 Ingest is deliberately not `std::string_view` and not `std::string` by value.
 
 - A view cannot wipe the caller's buffer, so the secret would stay in the program after construction.
 - Passing `std::string` by value or by move across a DLL is unsafe: the buffer was allocated on the caller's heap. Destroying it inside this library can free the wrong CRT.
-- Therefore the caller *cedes* a non-const `std::string&`. The constructor copies into wiped storage owned by this module and then overwrites and clears the argument. After return the only remaining copy is the one `Password` holds.
+- Therefore the caller *cedes* a non-const `std::string&` or `StormByte::Safe::String&`. The constructor copies into wiped storage and then overwrites and clears the argument. The STL overload is force-inlined so the source's storage operations run in the caller's CRT; the Safe overload uses mutable byte access and Base-owned text storage. Neither overload adopts the source allocation or wipes other pre-existing copies.
 - Literals use `explicit Password(const char*)`. They are copied; the source is not wiped (it lives in read-only storage). Use that form for tests and placeholders, not for production secrets kept in source.
 - Raw bytes (`const void*` + `ByteSize`) are copied and not wiped; the caller owns the source.
+
+The `Safe::String&` overload is for text without embedded NUL bytes: Base reports its length up to the first NUL. For binary secrets use `std::string&` or raw bytes with an explicit `ByteSize`; an embedded NUL in Safe text would truncate both the copied secret and the overwritten region.
 
 ```cpp
 #include <StormByte/crypto/secure/password.hxx>
@@ -120,6 +122,8 @@ using StormByte::Crypto::Secure::Vault;
 
 std::string fromEnv = std::getenv("DB_SECRET");
 Password db(fromEnv);                 // fromEnv is emptied and wiped
+StormByte::Safe::String safeInput("temporary-secret");
+Password safePassword(safeInput);     // safeInput is emptied and wiped
 Password placeholder("token-xyz");    // literal: not wiped
 
 Vault vault;
@@ -137,7 +141,7 @@ vault.Remove("api");
 vault.Clear();
 ```
 
-`Vault` is movable, not copyable. A move leaves the source empty. Names are `std::string_view`. A missing name is `Secure::VaultException`.
+`Vault` is movable, not copyable. Its named-password store is private to Crypto and held by `Safe::Unique`, so no STL container layout is exposed in the public object. A move leaves the source empty and reusable. Names are `std::string_view`. A missing name is `Secure::VaultException`.
 
 ### Hash and compress
 
