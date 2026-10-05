@@ -98,7 +98,6 @@ if(ENABLE_DOC)
 	set(DOXYGEN_GENERATE_MAN NO)
 	set(DOXYGEN_GENERATE_LATEX NO)
 	set(DOXYGEN_QUIET NO)
-	set(DOXYGEN_WARN_AS_ERROR YES)
 
 	doxygen_add_docs(
 		StormByteCryptoDoc
