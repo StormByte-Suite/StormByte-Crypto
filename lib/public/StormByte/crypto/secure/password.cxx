@@ -46,6 +46,8 @@
 
 using namespace StormByte::Crypto::Secure;
 
+Password::Password() noexcept = default;
+
 Password::Password(StormByte::Safe::String& value) noexcept
 	: Password(value.data(), StormByte::ByteSize{static_cast<std::size_t>(value.size())}) {
 	StormByte::Crypto::Helpers::SecureWipe(value);
@@ -81,7 +83,7 @@ Password::operator bool() const noexcept {
 
 bool Password::operator==(const Password& other) const noexcept {
 	if (!m_data || !other.m_data)
-		return m_data == other.m_data;
+		return Empty() && other.Empty();
 	return m_data->Equal(*other.m_data);
 }
 

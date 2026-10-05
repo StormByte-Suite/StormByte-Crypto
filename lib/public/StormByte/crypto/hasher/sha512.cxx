@@ -49,6 +49,14 @@ using namespace StormByte::Crypto::Hasher;
 
 SHA512::~SHA512() noexcept = default;
 
+Generic::PointerType SHA512::Clone() const noexcept {
+	return MakePointer<SHA512>(*this);
+}
+
+Generic::PointerType SHA512::Move() noexcept {
+	return MakePointer<SHA512>(std::move(*this));
+}
+
 bool SHA512::DoHash(std::span<const std::byte> dataSpan, WriteOnly& output) const noexcept {
 	return Engine::Hasher::Hash<CryptoPP::SHA512>(dataSpan, output);
 }

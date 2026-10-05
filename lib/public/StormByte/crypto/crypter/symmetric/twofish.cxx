@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 TwoFish::~TwoFish() noexcept = default;
 
+Generic::PointerType TwoFish::Clone() const noexcept {
+	return MakePointer<TwoFish>(*this);
+}
+
+Generic::PointerType TwoFish::Move() noexcept {
+	return MakePointer<TwoFish>(std::move(*this));
+}
+
 bool TwoFish::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptCBC<CryptoPP::Twofish, CryptoPP::CBC_Mode<CryptoPP::Twofish>::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, CryptoPP::Twofish::BLOCKSIZE);
 }

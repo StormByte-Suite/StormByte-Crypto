@@ -49,6 +49,14 @@ using namespace StormByte::Crypto::Hasher;
 
 SHA3_256::~SHA3_256() noexcept = default;
 
+Generic::PointerType SHA3_256::Clone() const noexcept {
+	return MakePointer<SHA3_256>(*this);
+}
+
+Generic::PointerType SHA3_256::Move() noexcept {
+	return MakePointer<SHA3_256>(std::move(*this));
+}
+
 bool SHA3_256::DoHash(std::span<const std::byte> dataSpan, WriteOnly& output) const noexcept {
 	return Engine::Hasher::Hash<CryptoPP::SHA3_256>(dataSpan, output);
 }

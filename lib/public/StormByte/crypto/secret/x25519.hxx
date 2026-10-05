@@ -62,6 +62,8 @@ namespace StormByte {
 		namespace Secret {
 			/**
 			 * @class X25519
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Secret::Generic.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief X25519 shared-secret derivation.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC X25519 final: public Generic {
@@ -113,24 +115,20 @@ namespace StormByte {
 					 * @brief Clone this object.
 					 * @return Shared pointer to the clone.
 					 */
-					Generic::PointerType Clone() const override {
-						return X25519::MakePointer<X25519>(*this);
-					}
+					Generic::PointerType Clone() const override;
 
 					/**
 					 * @brief Move this object into a new instance.
 					 * @return Shared pointer to the moved object.
 					 */
-					Generic::PointerType Move() override {
-						return X25519::MakePointer<X25519>(std::move(*this));
-					}
+					Generic::PointerType Move() override;
 
 					/**
 					 * @brief Derive a shared secret.
 					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
 					 * @return Password on success, or empty.
 					 */
-					std::optional<Secure::Password> Share(std::string_view peerPublicKey) const noexcept override;
+					StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const override;
 
 					/**
 					 * @brief Derive a shared secret without an instance.
@@ -138,10 +136,12 @@ namespace StormByte {
 					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
 					 * @return Password on success, or empty.
 					 */
-					static std::optional<Secure::Password> DeriveSharedSecret(
+					static StormByte::Safe::Optional<Secure::Password> DeriveSharedSecret(
 						KeyPair::Generic::PointerType keypair,
-						std::string_view peerPublicKey) noexcept;
+						std::string_view peerPublicKey);
 			};
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secret::X25519);

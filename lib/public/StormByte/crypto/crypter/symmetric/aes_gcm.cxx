@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 AES_GCM::~AES_GCM() noexcept = default;
 
+Generic::PointerType AES_GCM::Clone() const noexcept {
+	return MakePointer<AES_GCM>(*this);
+}
+
+Generic::PointerType AES_GCM::Move() noexcept {
+	return MakePointer<AES_GCM>(std::move(*this));
+}
+
 bool AES_GCM::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptGCM<CryptoPP::AES, CryptoPP::GCM<CryptoPP::AES>::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, 12);
 }

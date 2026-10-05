@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 RSA::~RSA() noexcept = default;
 
+Generic::PointerType RSA::Clone() const noexcept {
+	return MakePointer<RSA>(*this);
+}
+
+Generic::PointerType RSA::Move() noexcept {
+	return MakePointer<RSA>(std::move(*this));
+}
+
 bool RSA::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Asymmetric::EncryptAsymmetric<CryptoPP::RSAES_OAEP_SHA_Encryptor, CryptoPP::RSA::PublicKey>(input, m_keypair, output);
 }

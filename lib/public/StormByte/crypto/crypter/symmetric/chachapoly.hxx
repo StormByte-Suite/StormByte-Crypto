@@ -59,6 +59,8 @@ namespace StormByte {
 		namespace Crypter {
 			/**
 			 * @class ChaChaPoly
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Crypter::Symmetric.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief ChaCha20-Poly1305 crypter.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC ChaChaPoly final: public Symmetric {
@@ -110,17 +112,13 @@ namespace StormByte {
 					 * @brief Clone this crypter.
 					 * @return Shared pointer to the clone.
 					 */
-					inline PointerType Clone() const noexcept override {
-						return ChaChaPoly::MakePointer<ChaChaPoly>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this crypter into a new instance.
 					 * @return Shared pointer to the moved crypter.
 					 */
-					inline PointerType Move() noexcept override {
-						return ChaChaPoly::MakePointer<ChaChaPoly>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -158,3 +156,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Crypter::ChaChaPoly);

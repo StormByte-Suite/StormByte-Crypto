@@ -53,6 +53,12 @@ namespace StormByte::Crypto::Crypter {
 	 *
 	 * Copies share the same @ref StormByte::Crypto::Secure::Password. The buffer is
 	 * wiped when the last owner is destroyed.
+	 * @note MaybeSafe inherits all requirements of @ref StormByte::Crypto::Crypter::Generic,
+	 * including ABI-compatible toolchains and keeping all provider modules loaded.
+	 * The Password field is Safe and delegates ownership to exported Password/Safe operations;
+	 * inline construction, copying, assignment and movement do not own local heap storage.
+	 * Destruction is exported. Derived providers must preserve these guarantees for every added
+	 * field and bind owning Clone/Move creator/deleter callbacks in their provider module.
 	 */
 	class STORMBYTE_CRYPTO_PUBLIC Symmetric: public Generic {
 		public:
@@ -128,3 +134,5 @@ namespace StormByte::Crypto::Crypter {
 	 */
 	STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Create(enum Type type, Secure::Password password) noexcept;
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Crypter::Symmetric);

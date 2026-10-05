@@ -73,7 +73,7 @@ int test_x25519_derive_shared_secret_valid_keys() {
 	auto s2 = b.Share(kp1->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -89,7 +89,7 @@ int test_x25519_server_client_shared_secret() {
 	auto s2 = xc.Share(server->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -103,7 +103,7 @@ int test_x25519_derive_shared_secret_static() {
 	auto s2 = Secret::X25519::DeriveSharedSecret(b, a->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -118,7 +118,7 @@ int test_x25519_share_idempotent() {
 	auto s2 = x.Share(b->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -169,8 +169,8 @@ int test_x25519_malicious_third_party_key() {
 	ASSERT_TRUE(fn_name, ab.has_value());
 	ASSERT_TRUE(fn_name, ba.has_value());
 	ASSERT_TRUE(fn_name, ma.has_value());
-	ASSERT_TRUE(fn_name, *ab == *ba);
-	ASSERT_FALSE(fn_name, *ma == *ab);
+	ASSERT_TRUE(fn_name, ab.value() == ba.value());
+	ASSERT_FALSE(fn_name, ma.value() == ab.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -183,6 +183,25 @@ int test_x25519_share_without_private_key() {
 	auto peer = KeyPair::X25519::Generate(256);
 	ASSERT_TRUE(fn_name, static_cast<bool>(peer));
 	ASSERT_FALSE(fn_name, x.Share(peer->PublicKey()).has_value());
+	RETURN_TEST(fn_name, 0);
+}
+
+int test_x25519_shared_secret_snapshot_survives_reset() {
+	const std::string fn_name = "test_x25519_shared_secret_snapshot_survives_reset";
+	auto alice = KeyPair::X25519::Generate(256);
+	auto bob = KeyPair::X25519::Generate(256);
+	ASSERT_TRUE(fn_name, static_cast<bool>(alice));
+	ASSERT_TRUE(fn_name, static_cast<bool>(bob));
+	Secret::X25519 agreement(alice);
+	auto result = agreement.Share(bob->PublicKey());
+	ASSERT_TRUE(fn_name, result.has_value());
+	const Password snapshot = result.value();
+	result.reset();
+	ASSERT_FALSE(fn_name, result.has_value());
+	ASSERT_FALSE(fn_name, snapshot.Empty());
+	const auto repeated = agreement.Share(bob->PublicKey());
+	ASSERT_TRUE(fn_name, repeated.has_value());
+	ASSERT_TRUE(fn_name, snapshot == repeated.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -201,6 +220,7 @@ int main() {
 	result += test_x25519_server_client_shared_secret();
 	result += test_x25519_derive_shared_secret_static();
 	result += test_x25519_share_idempotent();
+	result += test_x25519_shared_secret_snapshot_survives_reset();
 
 	// -------------------
 	// Failure modes

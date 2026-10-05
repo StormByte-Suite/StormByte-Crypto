@@ -46,12 +46,13 @@
 #include <StormByte/safe/pointers.hxx>
 #include <StormByte/safe/string.hxx>
 #include <StormByte/size.hxx>
+#include <StormByte/type_traits/safe.hxx>
 
 #include <string>
 #include <utility>
 
 namespace StormByte::Crypto::Helpers {
-	struct SecureContent;
+	class SecureContent;
 	struct PasswordAccess;
 }
 
@@ -79,6 +80,9 @@ namespace StormByte {
 			 * is no public view of the raw bytes: once ingested, the secret only
 			 * exists inside this object (and any @ref StormByte::Crypto::Secure::Vault
 			 * that still holds a share).
+			 * @note MaybeSafe requires compatible compiler ABI and the Crypto module to remain loaded
+			 * while passwords exist. Copy, move, assignment and destruction run out of line in Crypto;
+			 * secure storage is released by its owning module. No caller allocation is adopted.
 			 *
 			 * ## Why ingest is a non-const reference, not a view and not a move
 			 *
@@ -110,6 +114,11 @@ namespace StormByte {
 					 * @name Construction
 					 * @{
 					 */
+					/**
+					 * @brief Empty password, suitable for Safe collections.
+					 */
+					Password() noexcept;
+
 					/**
 					 * @brief From a std::string. Copies into secure storage and wipes @p value in the caller's CRT.
 					 * @param value Password characters. Emptied and zeroed on return.
@@ -215,3 +224,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secure::Password);

@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 AES::~AES() noexcept = default;
 
+Generic::PointerType AES::Clone() const noexcept {
+	return MakePointer<AES>(*this);
+}
+
+Generic::PointerType AES::Move() noexcept {
+	return MakePointer<AES>(std::move(*this));
+}
+
 bool AES::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptCBC<CryptoPP::AES, CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, CryptoPP::AES::BLOCKSIZE);
 }

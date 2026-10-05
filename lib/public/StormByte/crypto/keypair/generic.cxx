@@ -67,6 +67,7 @@
 #include <iterator>
 #include <modes.h>
 #include <oids.h>
+#include <optional>
 #include <osrng.h>
 #include <pwdbased.h>
 #include <queue.h>
@@ -806,7 +807,7 @@ namespace {
 		}
 	}
 
-	Generic::PointerType MakeKeyPair(Type type, std::string pubStored, std::optional<Secure::Password> priv) noexcept {
+	Generic::PointerType MakeKeyPair(Type type, std::string pubStored, StormByte::Safe::Optional<Secure::Password> priv) noexcept {
 		switch (type) {
 			case Type::DSA:
 				return DSA::MakePointer<DSA>(pubStored, std::move(priv));
@@ -983,7 +984,7 @@ namespace {
 				}
 				return nullptr;
 			}
-			std::optional<Secure::Password> privPwd;
+			StormByte::Safe::Optional<Secure::Password> privPwd;
 			if (privDer && !privDer->empty()) {
 				try {
 					bool ok = false;
@@ -1154,10 +1155,27 @@ namespace {
 	}
 }
 
+Generic::Generic(enum Type type, StormByte::Safe::String public_key, StormByte::Safe::Optional<Secure::Password> private_key):
+	m_type(type),
+	m_public_key(std::move(public_key)),
+	m_private_key() {
+	if (private_key.has_value())
+		m_private_key.emplace(private_key.value());
+}
+
+Generic::Generic(const Generic& other) = default;
+
+Generic::Generic(Generic&& other) noexcept = default;
+
 Generic::~Generic() noexcept = default;
 
-bool Generic::Save(const std::filesystem::path& directory, std::string_view baseName, StorageFormat format) const noexcept {
+Generic& Generic::operator=(const Generic& other) = default;
+
+Generic& Generic::operator=(Generic&& other) noexcept = default;
+
+bool Generic::Save(PathView directoryView, std::string_view baseName, StorageFormat format) const noexcept {
 	try {
+		const std::filesystem::path directory{directoryView};
 		if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
 			return false;
 		if (m_public_key.empty())
@@ -1167,7 +1185,8 @@ bool Generic::Save(const std::filesystem::path& directory, std::string_view base
 			return false;
 		if (m_private_key.has_value()) {
 			const auto privPath = directory / (std::string{baseName} + ExtensionFor(format, false));
-			if (!WritePrivateFile(privPath, *m_private_key, format))
+			const Secure::Password privateKey = *m_private_key;
+			if (!WritePrivateFile(privPath, privateKey, format))
 				return false;
 		}
 
@@ -1178,12 +1197,13 @@ bool Generic::Save(const std::filesystem::path& directory, std::string_view base
 }
 
 bool Generic::Save(
-	const std::filesystem::path& directory,
+	PathView directoryView,
 	std::string_view baseName,
 	const Secure::Password& encryptPassword,
 	StorageFormat format
 ) const noexcept {
 	try {
+		const std::filesystem::path directory{directoryView};
 		if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
 			return false;
 		if (m_public_key.empty() || !m_private_key.has_value())
@@ -1192,14 +1212,16 @@ bool Generic::Save(
 		if (!WritePublicFile(pubPath, m_public_key, format))
 			return false;
 		const auto privPath = directory / (std::string{baseName} + ExtensionFor(format, false));
-		return WritePrivateFileEncrypted(privPath, *m_private_key, encryptPassword, format);
+		const Secure::Password privateKey = *m_private_key;
+		return WritePrivateFileEncrypted(privPath, privateKey, encryptPassword, format);
 	} catch (...) {
 		return false;
 	}
 }
 
-bool Generic::SavePublic(const std::filesystem::path& filePath, StorageFormat format) const noexcept {
+bool Generic::SavePublic(PathView filePathView, StorageFormat format) const noexcept {
 	try {
+		const std::filesystem::path filePath{filePathView};
 		if (m_public_key.empty())
 			return false;
 		return WritePublicFile(filePath, m_public_key, format);
@@ -1208,25 +1230,29 @@ bool Generic::SavePublic(const std::filesystem::path& filePath, StorageFormat fo
 	}
 }
 
-bool Generic::SavePrivate(const std::filesystem::path& filePath, StorageFormat format) const noexcept {
+bool Generic::SavePrivate(PathView filePathView, StorageFormat format) const noexcept {
 	try {
+		const std::filesystem::path filePath{filePathView};
 		if (!m_private_key.has_value())
 			return false;
-		return WritePrivateFile(filePath, *m_private_key, format);
+		const Secure::Password privateKey = *m_private_key;
+		return WritePrivateFile(filePath, privateKey, format);
 	} catch (...) {
 		return false;
 	}
 }
 
 bool Generic::SavePrivate(
-	const std::filesystem::path& filePath,
+	PathView filePathView,
 	const Secure::Password& encryptPassword,
 	StorageFormat format
 ) const noexcept {
 	try {
+		const std::filesystem::path filePath{filePathView};
 		if (!m_private_key.has_value())
 			return false;
-		return WritePrivateFileEncrypted(filePath, *m_private_key, encryptPassword, format);
+		const Secure::Password privateKey = *m_private_key;
+		return WritePrivateFileEncrypted(filePath, privateKey, encryptPassword, format);
 	} catch (...) {
 		return false;
 	}
@@ -1254,8 +1280,10 @@ namespace StormByte::Crypto::KeyPair {
 		}
 	}
 
-	Generic::PointerType Load(const std::filesystem::path& publicKeyPath, const std::filesystem::path& privateKeyPath) noexcept {
+	Generic::PointerType Load(PathView publicKeyPathView, PathView privateKeyPathView) noexcept {
 		try {
+			const std::filesystem::path publicKeyPath{publicKeyPathView};
+			const std::filesystem::path privateKeyPath{privateKeyPathView};
 			std::optional<std::vector<CryptoPP::byte>> pubDer;
 			std::optional<std::vector<CryptoPP::byte>> privDer;
 			bool privEncrypted = false;
@@ -1311,11 +1339,13 @@ namespace StormByte::Crypto::KeyPair {
 	}
 
 	Generic::PointerType Load(
-		const std::filesystem::path& publicKeyPath,
-		const std::filesystem::path& privateKeyPath,
+		PathView publicKeyPathView,
+		PathView privateKeyPathView,
 		const Secure::Password& password
 	) noexcept {
 		try {
+			const std::filesystem::path publicKeyPath{publicKeyPathView};
+			const std::filesystem::path privateKeyPath{privateKeyPathView};
 			std::optional<std::vector<CryptoPP::byte>> pubDer;
 			std::optional<std::vector<CryptoPP::byte>> privDer;
 			bool privEncrypted = false;
@@ -1375,8 +1405,9 @@ namespace StormByte::Crypto::KeyPair {
 		}
 	}
 
-	Generic::PointerType Load(const std::filesystem::path& path) noexcept {
+	Generic::PointerType Load(PathView pathView) noexcept {
 		try {
+			const std::filesystem::path path{pathView};
 			if (path.empty() || !std::filesystem::exists(path))
 				return nullptr;
 			if (std::filesystem::is_directory(path))
@@ -1388,8 +1419,9 @@ namespace StormByte::Crypto::KeyPair {
 		}
 	}
 
-	Generic::PointerType Load(const std::filesystem::path& path, const Secure::Password& password) noexcept {
+	Generic::PointerType Load(PathView pathView, const Secure::Password& password) noexcept {
 		try {
+			const std::filesystem::path path{pathView};
 			if (path.empty() || !std::filesystem::exists(path))
 				return nullptr;
 			if (std::filesystem::is_directory(path))

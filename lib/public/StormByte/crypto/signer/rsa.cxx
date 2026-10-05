@@ -51,6 +51,14 @@ using StormByte::Buffer::Consumer;
 
 RSA::~RSA() noexcept = default;
 
+Generic::PointerType RSA::Clone() const noexcept {
+	return MakePointer<RSA>(*this);
+}
+
+Generic::PointerType RSA::Move() noexcept {
+	return MakePointer<RSA>(std::move(*this));
+}
+
 bool RSA::DoSign(std::span<const std::byte> data, WriteOnly& output) const noexcept {
 	return Engine::Signer::Sign<CryptoPP::RSASS<CryptoPP::PKCS1v15, CryptoPP::SHA256>::Signer, CryptoPP::RSA::PrivateKey>(
 		data, m_keypair, output);

@@ -96,7 +96,7 @@ int test_ecdh_derive_shared_secret_valid_keys() {
 	auto s2 = ecdh2.Share(kp1->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -112,7 +112,7 @@ int test_ecdh_server_client_shared_secret() {
 	auto s2 = ecdh_client.Share(server->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -129,7 +129,7 @@ int test_ecdh_share_all_curves() {
 		auto s2 = eb.Share(a->PublicKey());
 		ASSERT_TRUE(fn_name, s1.has_value());
 		ASSERT_TRUE(fn_name, s2.has_value());
-		ASSERT_TRUE(fn_name, *s1 == *s2);
+		ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	}
 	RETURN_TEST(fn_name, 0);
 }
@@ -145,7 +145,7 @@ int test_ecdh_share_idempotent() {
 	auto s2 = ecdh.Share(b->PublicKey());
 	ASSERT_TRUE(fn_name, s1.has_value());
 	ASSERT_TRUE(fn_name, s2.has_value());
-	ASSERT_TRUE(fn_name, *s1 == *s2);
+	ASSERT_TRUE(fn_name, s1.value() == s2.value());
 	RETURN_TEST(fn_name, 0);
 }
 
@@ -207,8 +207,8 @@ int test_ecdh_malicious_third_party_key() {
 	ASSERT_TRUE(fn_name, ab.has_value());
 	ASSERT_TRUE(fn_name, ba.has_value());
 	ASSERT_TRUE(fn_name, ma.has_value());
-	ASSERT_TRUE(fn_name, *ab == *ba);
-	ASSERT_FALSE(fn_name, *ma == *ab);
+	ASSERT_TRUE(fn_name, ab.value() == ba.value());
+	ASSERT_FALSE(fn_name, ma.value() == ab.value());
 	RETURN_TEST(fn_name, 0);
 }
 

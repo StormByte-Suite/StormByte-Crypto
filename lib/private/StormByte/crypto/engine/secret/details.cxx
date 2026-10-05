@@ -94,10 +94,10 @@ namespace {
 	}
 }
 
-std::optional<Secure::Password> StormByte::Crypto::Engine::Secret::ECDHShare(
+StormByte::Safe::Optional<Secure::Password> StormByte::Crypto::Engine::Secret::ECDHShare(
 	const Secure::Password& privateKey,
 	const std::string& peerPublicKeyBase64,
-	unsigned short bits) noexcept {
+	unsigned short bits) {
 	CryptoPP::SecByteBlock priv;
 	CryptoPP::SecByteBlock pub;
 	CryptoPP::SecByteBlock secret;
@@ -204,9 +204,9 @@ std::optional<Secure::Password> StormByte::Crypto::Engine::Secret::ECDHShare(
 	}
 }
 
-std::optional<Secure::Password> StormByte::Crypto::Engine::Secret::X25519Share(
+StormByte::Safe::Optional<Secure::Password> StormByte::Crypto::Engine::Secret::X25519Share(
 	const Secure::Password& privateKey,
-	const std::string& peerPublicKeyBase64) noexcept {
+	const std::string& peerPublicKeyBase64) {
 	CryptoPP::SecByteBlock privIn, pubIn, priv, pub, secret;
 	try {
 		const unsigned char* privPtr = PasswordAccess::Data(privateKey);

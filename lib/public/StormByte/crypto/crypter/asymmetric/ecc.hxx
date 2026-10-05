@@ -60,6 +60,8 @@ namespace StormByte {
 		namespace Crypter {
 			/**
 			 * @class ECC
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Crypter::Asymmetric.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief Elliptic-curve crypter.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC ECC final: public Asymmetric {
@@ -125,17 +127,13 @@ namespace StormByte {
 					 * @brief Clone this crypter.
 					 * @return Shared pointer to the clone.
 					 */
-					inline PointerType Clone() const noexcept override {
-						return ECC::MakePointer<ECC>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this crypter into a new instance.
 					 * @return Shared pointer to the moved crypter.
 					 */
-					inline PointerType Move() noexcept override {
-						return ECC::MakePointer<ECC>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -173,3 +171,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Crypter::ECC);

@@ -83,6 +83,12 @@ Nothing in the public tree includes Crypto++. Private headers are not installed.
 
 Public handles are `Clonable` + `MakePointer` / `Shared`. KeyPair, Signer, Crypter and Secret take `KeyPair::Generic::PointerType`, not `std::shared_ptr`. Exceptions use `Path{"Crypto"}`; child offices add their own segment. `what()` is `StormByte.Crypto` or `StormByte.Crypto.<Child>: message`. Secure uses `StormByte.Crypto.Secure` / `StormByte.Crypto.Secure.Vault`.
 
+Crypto providers declare `MaybeSafe`: use ABI-compatible toolchains and keep Crypto, Base and Buffer loaded while their objects or lifetime callbacks exist. Clone and move callbacks are created inside Crypto. This is conditional DLL safety, not compatibility between arbitrary C++ ABIs.
+
+Private keys and key-agreement results use `StormByte::Safe::Optional<Secure::Password>`, not `std::optional`. Dereferencing a const Safe optional returns a password snapshot; retain the snapshot while borrowing its bytes. A default-constructed `Password` is empty and can be stored in `Safe::Vector`, `Safe::Optional` and `Safe::Queue`. Persistence accepts native-character `KeyPair::PathView`; force-inlined `std::filesystem::path` adapters read the caller's path locally, then Crypto constructs its own path from the view. Rebuild binary consumers after these ABI changes.
+
+Key agreement returns an empty Safe optional for invalid keys or failed derivation. `Share` and `DeriveSharedSecret` are not `noexcept`: creating even an empty Safe result may fail to allocate and propagate a StormByte exception.
+
 ### Factories
 
 ```cpp

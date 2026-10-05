@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 Serpent::~Serpent() noexcept = default;
 
+Generic::PointerType Serpent::Clone() const noexcept {
+	return MakePointer<Serpent>(*this);
+}
+
+Generic::PointerType Serpent::Move() noexcept {
+	return MakePointer<Serpent>(std::move(*this));
+}
+
 bool Serpent::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptCBC<CryptoPP::Serpent, CryptoPP::CBC_Mode<CryptoPP::Serpent>::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, CryptoPP::Serpent::BLOCKSIZE);
 }

@@ -62,6 +62,9 @@ namespace StormByte {
 		namespace Secret {
 			/**
 			 * @class ECDH
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Secret::Generic.
+			 * The added arithmetic curve-size field is Safe; exported Clone/Move preserve it and
+			 * bind ownership callbacks in Crypto.
 			 * @brief ECDH shared-secret derivation.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC ECDH final: public Generic {
@@ -130,24 +133,20 @@ namespace StormByte {
 					 * @brief Clone this object.
 					 * @return Shared pointer to the clone.
 					 */
-					PointerType Clone() const noexcept override {
-						return ECDH::MakePointer<ECDH>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this object into a new instance.
 					 * @return Shared pointer to the moved object.
 					 */
-					PointerType Move() noexcept override {
-						return ECDH::MakePointer<ECDH>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 					/**
 					 * @brief Derive a shared secret.
 					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
 					 * @return Password on success, or empty.
 					 */
-					std::optional<Secure::Password> Share(std::string_view peerPublicKey) const noexcept override;
+					StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const override;
 
 				private:
 					unsigned short m_bits;	///< Curve size in bits
@@ -155,3 +154,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secret::ECDH);

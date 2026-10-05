@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 Camellia::~Camellia() noexcept = default;
 
+Generic::PointerType Camellia::Clone() const noexcept {
+	return MakePointer<Camellia>(*this);
+}
+
+Generic::PointerType Camellia::Move() noexcept {
+	return MakePointer<Camellia>(std::move(*this));
+}
+
 bool Camellia::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptCBC<CryptoPP::Camellia, CryptoPP::CBC_Mode<CryptoPP::Camellia>::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, CryptoPP::Camellia::BLOCKSIZE);
 }

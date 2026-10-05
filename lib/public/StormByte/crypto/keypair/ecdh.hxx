@@ -44,7 +44,6 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/safe/string.hxx>
 
-#include <optional>
 #include <string_view>
 
 /**
@@ -64,6 +63,9 @@ namespace StormByte {
 		namespace KeyPair {
 			/**
 			 * @class ECDH
+			 * @note Conditional DLL safety follows Generic's provider requirements.
+			 *       Material construction, Clone/Move and destruction are provided by
+			 *       Crypto; defaulted value operations delegate to exported Generic operations.
 			 * @brief ECDH keypair.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC ECDH final: public Generic {
@@ -77,8 +79,7 @@ namespace StormByte {
 					 * @param publicKey Public key. Accepts String and std::string via string_view.
 					 * @param privateKey Optional private key.
 					 */
-					inline ECDH(std::string_view publicKey, std::optional<Secure::Password> privateKey = std::nullopt):
-						Generic(Type::ECDH, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+					ECDH(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey = std::nullopt);
 
 					/**
 					 * @brief Copy constructor.
@@ -116,17 +117,13 @@ namespace StormByte {
 					 * @brief Clone this keypair.
 					 * @return Shared pointer to the clone.
 					 */
-					PointerType Clone() const override {
-						return MakePointer<ECDH>(*this);
-					}
+					PointerType Clone() const override;
 
 					/**
 					 * @brief Move this keypair into a new instance.
 					 * @return Shared pointer to the moved keypair.
 					 */
-					PointerType Move() override {
-						return MakePointer<ECDH>(std::move(*this));
-					}
+					PointerType Move() override;
 
 					/**
 					 * @brief Generate an ECDH keypair.
@@ -138,3 +135,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::KeyPair::ECDH);

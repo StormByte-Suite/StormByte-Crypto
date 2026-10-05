@@ -49,7 +49,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+ED25519::ED25519(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::ED25519, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 ED25519::~ED25519() noexcept = default;
+
+ED25519::PointerType ED25519::Clone() const {
+	return MakePointer<ED25519>(*this);
+}
+
+ED25519::PointerType ED25519::Move() {
+	return MakePointer<ED25519>(std::move(*this));
+}
 
 ED25519::PointerType ED25519::Generate(unsigned short /*bits*/) noexcept {
 	try {

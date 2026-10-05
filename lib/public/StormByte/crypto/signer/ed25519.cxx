@@ -61,6 +61,14 @@ using namespace StormByte::Crypto::Signer;
 
 ED25519::~ED25519() noexcept = default;
 
+Generic::PointerType ED25519::Clone() const noexcept {
+	return MakePointer<ED25519>(*this);
+}
+
+Generic::PointerType ED25519::Move() noexcept {
+	return MakePointer<ED25519>(std::move(*this));
+}
+
 namespace {
 	struct Ed25519SignBox final : StormByte::Crypto::Engine::Signer::SignBox {
 		CryptoPP::ed25519::Signer signer;

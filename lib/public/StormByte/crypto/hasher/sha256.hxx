@@ -60,6 +60,8 @@ namespace StormByte {
 			/**
 			 * @class SHA256
 			 * @brief SHA-256 hasher.
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Hasher::Generic.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC SHA256 final: public Generic {
 				public:
@@ -109,17 +111,13 @@ namespace StormByte {
 					 * @brief Clone this hasher.
 					 * @return Shared pointer to the clone.
 					 */
-					inline PointerType Clone() const noexcept override {
-						return MakePointer<SHA256>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this hasher into a new instance.
 					 * @return Shared pointer to the moved hasher.
 					 */
-					inline PointerType Move() noexcept override {
-						return MakePointer<SHA256>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -141,3 +139,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Hasher::SHA256);

@@ -47,7 +47,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+RSA::RSA(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::RSA, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 RSA::~RSA() noexcept = default;
+
+RSA::PointerType RSA::Clone() const {
+	return MakePointer<RSA>(*this);
+}
+
+RSA::PointerType RSA::Move() {
+	return MakePointer<RSA>(std::move(*this));
+}
 
 RSA::PointerType RSA::Generate(unsigned short bits) noexcept {
 	if (bits != 1024 && bits != 2048 && bits != 3072 && bits != 4096)

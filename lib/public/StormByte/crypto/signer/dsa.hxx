@@ -62,6 +62,8 @@ namespace StormByte {
 		namespace Signer {
 			/**
 			 * @class DSA
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Signer::Generic.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief DSA signer.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC DSA final: public Generic {
@@ -127,17 +129,13 @@ namespace StormByte {
 					 * @brief Clone this signer.
 					 * @return Shared pointer to the clone.
 					 */
-					PointerType Clone() const noexcept override {
-						return DSA::MakePointer<DSA>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this signer into a new instance.
 					 * @return Shared pointer to the moved signer.
 					 */
-					PointerType Move() noexcept override {
-						return DSA::MakePointer<DSA>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -176,3 +174,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Signer::DSA);

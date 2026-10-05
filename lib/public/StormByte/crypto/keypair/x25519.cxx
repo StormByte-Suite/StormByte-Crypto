@@ -48,7 +48,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+X25519::X25519(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::X25519, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 X25519::~X25519() noexcept = default;
+
+X25519::PointerType X25519::Clone() const {
+	return MakePointer<X25519>(*this);
+}
+
+X25519::PointerType X25519::Move() {
+	return MakePointer<X25519>(std::move(*this));
+}
 
 X25519::PointerType X25519::Generate(unsigned short /*bits*/) noexcept {
 	try {

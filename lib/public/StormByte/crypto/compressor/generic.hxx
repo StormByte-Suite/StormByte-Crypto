@@ -45,6 +45,7 @@
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/type_traits.hxx>
+#include <StormByte/type_traits/safe.hxx>
 
 #include <span>
 
@@ -75,6 +76,13 @@ namespace StormByte {
 			/**
 			 * @class Generic
 			 * @brief Abstract compressor. Concrete codecs derive from this.
+			 * @note MaybeSafe requires ABI-compatible toolchains and all provider modules to remain
+			 * loaded while objects, virtual functions or ownership callbacks can be used.
+			 * The codec enum and arithmetic level are Safe; inline special members own no local heap.
+			 * Destruction is exported, and owning Clone/Move implementations must allocate and bind
+			 * creator/deleter callbacks in their provider module through Safe ownership operations.
+			 * Derived providers must keep every field Safe or satisfy its MaybeSafe requirements,
+			 * and preserve provider-owned allocation, copying, assignment, movement and destruction.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
@@ -326,3 +334,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Compressor::Generic);

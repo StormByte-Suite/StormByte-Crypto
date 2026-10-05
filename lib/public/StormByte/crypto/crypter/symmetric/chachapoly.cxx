@@ -46,6 +46,14 @@ using namespace StormByte::Crypto::Crypter;
 
 ChaChaPoly::~ChaChaPoly() noexcept = default;
 
+Generic::PointerType ChaChaPoly::Clone() const noexcept {
+	return MakePointer<ChaChaPoly>(*this);
+}
+
+Generic::PointerType ChaChaPoly::Move() noexcept {
+	return MakePointer<ChaChaPoly>(std::move(*this));
+}
+
 bool ChaChaPoly::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Symmetric::EncryptAEAD<CryptoPP::ChaCha20Poly1305, CryptoPP::ChaCha20Poly1305::Encryption, CryptoPP::SHA256>(input, m_password, output, 16, 12, 32);
 }

@@ -59,6 +59,8 @@ namespace StormByte {
 		namespace Crypter {
 			/**
 			 * @class Camellia
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Crypter::Symmetric.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief Camellia-CBC crypter.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Camellia final: public Symmetric {
@@ -110,17 +112,13 @@ namespace StormByte {
 					 * @brief Clone this crypter.
 					 * @return Shared pointer to the clone.
 					 */
-					inline PointerType Clone() const noexcept override {
-						return Camellia::MakePointer<Camellia>(*this);
-					}
+					PointerType Clone() const noexcept override;
 
 					/**
 					 * @brief Move this crypter into a new instance.
 					 * @return Shared pointer to the moved crypter.
 					 */
-					inline PointerType Move() noexcept override {
-						return Camellia::MakePointer<Camellia>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -158,3 +156,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Crypter::Camellia);

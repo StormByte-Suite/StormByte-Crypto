@@ -46,12 +46,12 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/optional.hxx>
 #include <StormByte/safe/string.hxx>
 
 #include <base64.h>
 #include <filters.h>
 #include <memory>
-#include <optional>
 #include <queue.h>
 #include <string>
 #include <string_view>
@@ -182,10 +182,11 @@ namespace StormByte {
 				 * @return Shared key, or nullptr.
 				 */
 				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const std::optional<Secure::Password>& keyBinary) noexcept {
+				std::shared_ptr<KeyT> DeserializeKey(const StormByte::Safe::Optional<Secure::Password>& keyBinary) noexcept {
 					if (!keyBinary.has_value())
 						return nullptr;
-					return DeserializeKey<KeyT>(*keyBinary);
+					const Secure::Password privateKey = *keyBinary;
+					return DeserializeKey<KeyT>(privateKey);
 				}
 
 				/**

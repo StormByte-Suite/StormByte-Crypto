@@ -46,6 +46,7 @@
 #include <StormByte/expected.hxx>
 #include <StormByte/safe/pointers.hxx>
 #include <StormByte/size.hxx>
+#include <StormByte/type_traits/safe.hxx>
 
 #include <string_view>
 #include <utility>
@@ -76,6 +77,12 @@ namespace StormByte {
 			 *
 			 * Move-only. Destroying the vault, or calling Clear()/Remove(), drops
 			 * the last owner of each password and triggers the wipe.
+			 * @note MaybeSafe requires ABI-compatible toolchains and the Crypto and Base provider
+			 * modules to remain loaded while the vault or its ownership callbacks can be used.
+			 * Its only field is a Safe::Unique owner of opaque Storage. Storage's STL containers,
+			 * allocation and creator/deleter callbacks remain inside Crypto; construction, movement,
+			 * assignment and destruction are exported. Stored Password values are Safe.
+			 * This move-only type is not a SafeValue and is not admitted as a Safe collection value.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Vault {
 				public:
@@ -164,3 +171,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secure::Vault);

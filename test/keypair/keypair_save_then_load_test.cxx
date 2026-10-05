@@ -762,6 +762,66 @@ int test_save_ecdh_round_trip_share() {
 	RETURN_TEST(fn_name, 0);
 }
 
+template<typename KeyPairT>
+int test_private_optional_copy_move(const std::string& algorithm) {
+	const std::string fn_name = "test_private_optional_copy_move_" + algorithm;
+	static_assert(StormByte::Type::MaybeSafe<KeyPair::Generic>);
+	static_assert(StormByte::Type::MaybeSafe<KeyPairT>);
+	static_assert(StormByte::Type::SameAs<
+		decltype(std::declval<const KeyPairT&>().PrivateKey()),
+		const StormByte::Safe::Optional<Password>&>);
+	static_assert(StormByte::Type::SameAs<
+		decltype(*std::declval<const StormByte::Safe::Optional<Password>&>()), Password>);
+	const Password expected("retained-private-material");
+	StormByte::Safe::Optional<Password> retained;
+	Password snapshot;
+	{
+		StormByte::Safe::Optional<Password> source(Password("retained-private-material"));
+		KeyPairT original("public-material", source);
+		source.reset();
+		ASSERT_TRUE(fn_name, original.HasPrivateKey());
+		ASSERT_TRUE(fn_name, original.PrivateKey().value() == expected);
+
+		KeyPairT copied(original);
+		KeyPairT moved(std::move(copied));
+		ASSERT_FALSE(fn_name, copied.HasPrivateKey());
+		ASSERT_TRUE(fn_name, moved.PrivateKey().value() == expected);
+		ASSERT_TRUE(fn_name, moved.PublicKey() == original.PublicKey());
+
+		KeyPairT assigned("replacement", Password("old-private-material"));
+		assigned = original;
+		KeyPairT moveAssigned("replacement", Password("old-private-material"));
+		moveAssigned = std::move(assigned);
+		ASSERT_FALSE(fn_name, assigned.HasPrivateKey());
+		ASSERT_TRUE(fn_name, moveAssigned.PrivateKey().value() == expected);
+		ASSERT_TRUE(fn_name, moveAssigned.PublicKey() == original.PublicKey());
+
+		auto clone = original.Clone();
+		ASSERT_TRUE(fn_name, static_cast<bool>(clone));
+		auto transferred = clone->Move();
+		ASSERT_TRUE(fn_name, static_cast<bool>(transferred));
+		ASSERT_FALSE(fn_name, clone->HasPrivateKey());
+		ASSERT_TRUE(fn_name, transferred->PrivateKey().value() == expected);
+
+		StormByte::Safe::Optional<Password> optionalCopy(transferred->PrivateKey());
+		StormByte::Safe::Optional<Password> optionalMove(std::move(optionalCopy));
+		ASSERT_FALSE(fn_name, optionalCopy.has_value());
+		retained = optionalMove;
+		optionalMove.reset();
+		snapshot = *retained;
+	}
+	ASSERT_TRUE(fn_name, retained.value() == expected);
+	retained.reset();
+	ASSERT_TRUE(fn_name, snapshot == expected);
+	ASSERT_TRUE(fn_name, snapshot.Size() == expected.Size());
+	KeyPairT publicOnly("public-material");
+	ASSERT_FALSE(fn_name, publicOnly.HasPrivateKey());
+	KeyPairT emptyCopy(publicOnly);
+	KeyPairT emptyMove(std::move(emptyCopy));
+	ASSERT_FALSE(fn_name, emptyMove.HasPrivateKey());
+	RETURN_TEST(fn_name, 0);
+}
+
 int main() {
 	{
 		const std::string setup = "setup_generate_and_save";
@@ -770,6 +830,17 @@ int main() {
 	}
 
 	int result = 0;
+
+	// ---------------------------------------------------------------------------
+	// Private optional copy / move
+	// ---------------------------------------------------------------------------
+	result += test_private_optional_copy_move<KeyPair::DSA>("dsa");
+	result += test_private_optional_copy_move<KeyPair::ECC>("ecc");
+	result += test_private_optional_copy_move<KeyPair::ECDH>("ecdh");
+	result += test_private_optional_copy_move<KeyPair::ECDSA>("ecdsa");
+	result += test_private_optional_copy_move<KeyPair::ED25519>("ed25519");
+	result += test_private_optional_copy_move<KeyPair::RSA>("rsa");
+	result += test_private_optional_copy_move<KeyPair::X25519>("x25519");
 
 	// ---------------------------------------------------------------------------
 	// File permissions

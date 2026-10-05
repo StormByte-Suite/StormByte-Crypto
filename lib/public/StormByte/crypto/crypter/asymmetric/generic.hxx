@@ -61,6 +61,12 @@ namespace StormByte {
 			/**
 			 * @class Asymmetric
 			 * @brief Keypair-based asymmetric crypter.
+			 * @note MaybeSafe inherits all requirements of @ref StormByte::Crypto::Crypter::Generic,
+			 * including ABI-compatible toolchains and keeping all provider modules loaded.
+			 * The keypair uses Safe shared ownership and must satisfy its provider's MaybeSafe contract.
+			 * Inline construction, copying, assignment and movement delegate to Safe ownership or
+			 * exported keypair operations; destruction is exported. Derived providers must preserve
+			 * these guarantees for every added field and bind owning Clone/Move callbacks in their module.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Asymmetric: public Generic {
 				public:
@@ -249,3 +255,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Crypter::Asymmetric);

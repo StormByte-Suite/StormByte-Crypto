@@ -51,6 +51,14 @@ using StormByte::Buffer::Consumer;
 
 ECDSA::~ECDSA() noexcept = default;
 
+Generic::PointerType ECDSA::Clone() const noexcept {
+	return MakePointer<ECDSA>(*this);
+}
+
+Generic::PointerType ECDSA::Move() noexcept {
+	return MakePointer<ECDSA>(std::move(*this));
+}
+
 bool ECDSA::DoSign(std::span<const std::byte> data, WriteOnly& output) const noexcept {
 	return Engine::Signer::Sign<CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::Signer, CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::PrivateKey>(
 		data, m_keypair, output);

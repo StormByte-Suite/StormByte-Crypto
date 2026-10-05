@@ -49,7 +49,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+ECDH::ECDH(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::ECDH, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 ECDH::~ECDH() noexcept = default;
+
+ECDH::PointerType ECDH::Clone() const {
+	return MakePointer<ECDH>(*this);
+}
+
+ECDH::PointerType ECDH::Move() {
+	return MakePointer<ECDH>(std::move(*this));
+}
 
 ECDH::PointerType ECDH::Generate(unsigned short bits) noexcept {
 	try {

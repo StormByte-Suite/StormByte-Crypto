@@ -48,7 +48,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+ECC::ECC(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::ECC, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 ECC::~ECC() noexcept = default;
+
+ECC::PointerType ECC::Clone() const {
+	return MakePointer<ECC>(*this);
+}
+
+ECC::PointerType ECC::Move() {
+	return MakePointer<ECC>(std::move(*this));
+}
 
 ECC::PointerType ECC::Generate(unsigned short bits) noexcept {
 	try {

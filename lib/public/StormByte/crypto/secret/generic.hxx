@@ -44,8 +44,9 @@
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/optional.hxx>
+#include <StormByte/type_traits/safe.hxx>
 
-#include <optional>
 #include <string_view>
 
 /**
@@ -77,6 +78,15 @@ namespace StormByte {
 			 * @brief Abstract key-agreement object.
 			 *
 			 * Holds a local keypair and derives a shared secret from a peer public key.
+			 * @note MaybeSafe requires ABI-compatible toolchains and all provider modules to remain
+			 * loaded while objects, virtual functions or ownership callbacks can be used.
+			 * The algorithm enum is Safe; the keypair uses Safe shared ownership and must satisfy
+			 * its provider's MaybeSafe contract. Inline construction and special members delegate
+			 * to Safe ownership rather than owning local heap storage; returned Password values are Safe.
+			 * Destruction is exported, and owning Clone/Move implementations must allocate and bind
+			 * creator/deleter callbacks in their provider module through Safe ownership operations.
+			 * Derived providers must keep every field Safe or satisfy its MaybeSafe requirements,
+			 * and preserve provider-owned allocation, copying, assignment, movement and destruction.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Generic: public StormByte::Safe::Clonable<Generic> {
 				public:
@@ -128,8 +138,9 @@ namespace StormByte {
 					 * @brief Derive a shared secret from a peer public key.
 					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
 					 * @return Password on success, or empty.
+					 * @throws StormByte::Exception If Safe result storage cannot be created.
 					 */
-					virtual std::optional<Secure::Password> Share(std::string_view peerPublicKey) const noexcept = 0;
+					virtual StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const = 0;
 
 				protected:
 					enum Type m_type;							///< Algorithm
@@ -155,3 +166,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secret::Generic);

@@ -49,6 +49,14 @@ using namespace StormByte::Crypto::Hasher;
 
 Blake2b::~Blake2b() noexcept = default;
 
+Generic::PointerType Blake2b::Clone() const noexcept {
+	return MakePointer<Blake2b>(*this);
+}
+
+Generic::PointerType Blake2b::Move() noexcept {
+	return MakePointer<Blake2b>(std::move(*this));
+}
+
 bool Blake2b::DoHash(std::span<const std::byte> dataSpan, WriteOnly& output) const noexcept {
 	return Engine::Hasher::Hash<CryptoPP::BLAKE2b>(dataSpan, output);
 }

@@ -47,6 +47,14 @@ using namespace StormByte::Crypto::Crypter;
 
 ECC::~ECC() noexcept = default;
 
+Generic::PointerType ECC::Clone() const noexcept {
+	return MakePointer<ECC>(*this);
+}
+
+Generic::PointerType ECC::Move() noexcept {
+	return MakePointer<ECC>(std::move(*this));
+}
+
 bool ECC::DoEncrypt(std::span<const std::byte> input, Buffer::WriteOnly& output) const noexcept {
 	return Engine::Crypter::Asymmetric::EncryptAsymmetric<ECIES::Encryptor, ECIES::PublicKey>(input, m_keypair, output);
 }

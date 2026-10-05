@@ -51,6 +51,14 @@ using StormByte::Buffer::Consumer;
 
 DSA::~DSA() noexcept = default;
 
+Generic::PointerType DSA::Clone() const noexcept {
+	return MakePointer<DSA>(*this);
+}
+
+Generic::PointerType DSA::Move() noexcept {
+	return MakePointer<DSA>(std::move(*this));
+}
+
 bool DSA::DoSign(std::span<const std::byte> data, WriteOnly& output) const noexcept {
 	return Engine::Signer::Sign<CryptoPP::DSA::Signer, CryptoPP::DSA::PrivateKey>(
 		data, m_keypair, output);

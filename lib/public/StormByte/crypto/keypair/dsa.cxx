@@ -47,7 +47,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+DSA::DSA(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::DSA, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 DSA::~DSA() noexcept = default;
+
+DSA::PointerType DSA::Clone() const {
+	return MakePointer<DSA>(*this);
+}
+
+DSA::PointerType DSA::Move() {
+	return MakePointer<DSA>(std::move(*this));
+}
 
 DSA::PointerType DSA::Generate(unsigned short bits) noexcept {
 	try {

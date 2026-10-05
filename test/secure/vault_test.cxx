@@ -52,6 +52,10 @@ using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
 using StormByte::Crypto::Secure::Vault;
 
+static_assert(StormByte::Type::MaybeSafe<Vault>);
+static_assert(StormByte::Type::MaybeSafe<StormByte::Crypto::Secure::ExpectedPassword>);
+static_assert(!StormByte::Type::SafeValue<Vault>);
+
 // -------------------
 // Store / get
 // -------------------

@@ -39,6 +39,9 @@
  */
 
 #include <StormByte/crypto/secure/password.hxx>
+#include <StormByte/safe/optional.hxx>
+#include <StormByte/safe/queue.hxx>
+#include <StormByte/safe/vector.hxx>
 #include <StormByte/test_handlers.h>
 
 #include <string>
@@ -47,9 +50,27 @@
 using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
 
+static_assert(StormByte::Type::MaybeSafe<Password>);
+static_assert(StormByte::Type::SafeValue<Password>);
+static_assert(sizeof(StormByte::Safe::Vector<Password>) > 0);
+static_assert(sizeof(StormByte::Safe::Optional<Password>) > 0);
+static_assert(sizeof(StormByte::Safe::Queue<Password>) > 0);
+
 // -------------------
 // Construction
 // -------------------
+
+int test_password_construct_default() {
+	const std::string fn_name = "test_password_construct_default";
+	Password password;
+	ASSERT_TRUE(fn_name, password.Empty());
+	ASSERT_EQUAL(fn_name, password.Size(), StormByte::ByteSize{0});
+	ASSERT_FALSE(fn_name, static_cast<bool>(password));
+	ASSERT_TRUE(fn_name, password == Password(""));
+	password = Password("reused");
+	ASSERT_TRUE(fn_name, password == Password("reused"));
+	RETURN_TEST(fn_name, 0);
+}
 
 int test_password_construct_from_c_string() {
 	const std::string fn_name = "test_password_construct_from_c_string";
@@ -207,6 +228,7 @@ int main() {
 	// -------------------
 	// Construction
 	// -------------------
+	result += test_password_construct_default();
 	result += test_password_construct_from_c_string();
 	result += test_password_construct_from_string();
 	result += test_password_construct_from_safe_string();

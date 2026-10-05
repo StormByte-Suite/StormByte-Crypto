@@ -188,6 +188,14 @@ namespace {
 
 Bzip2::~Bzip2() noexcept = default;
 
+Generic::PointerType Bzip2::Clone() const {
+	return MakePointer<Bzip2>(*this);
+}
+
+Generic::PointerType Bzip2::Move() noexcept {
+	return MakePointer<Bzip2>(std::move(*this));
+}
+
 Bzip2::Bzip2(unsigned short level):
 	Generic(Type::Bzip2, std::clamp<unsigned short>(static_cast<unsigned short>(level), 1, 9)) {}
 

@@ -48,7 +48,18 @@
 
 using namespace StormByte::Crypto::KeyPair;
 
+ECDSA::ECDSA(std::string_view publicKey, StormByte::Safe::Optional<Secure::Password> privateKey):
+	Generic(Type::ECDSA, StormByte::Safe::String{publicKey}, std::move(privateKey)) {}
+
 ECDSA::~ECDSA() noexcept = default;
+
+ECDSA::PointerType ECDSA::Clone() const {
+	return MakePointer<ECDSA>(*this);
+}
+
+ECDSA::PointerType ECDSA::Move() {
+	return MakePointer<ECDSA>(std::move(*this));
+}
 
 ECDSA::PointerType ECDSA::Generate(unsigned short bits) noexcept {
 	try {

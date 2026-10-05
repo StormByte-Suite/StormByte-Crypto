@@ -54,6 +54,14 @@ using namespace StormByte::Crypto::Compressor;
 
 Zlib::~Zlib() noexcept = default;
 
+Generic::PointerType Zlib::Clone() const {
+	return MakePointer<Zlib>(*this);
+}
+
+Generic::PointerType Zlib::Move() noexcept {
+	return MakePointer<Zlib>(std::move(*this));
+}
+
 namespace {
 	struct ZlibCompressOps final : StormByte::Crypto::Engine::Compressor::StreamOps {
 		StormByte::BinaryData buffer;

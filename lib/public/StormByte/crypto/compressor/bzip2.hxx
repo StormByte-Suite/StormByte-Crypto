@@ -59,6 +59,8 @@ namespace StormByte {
 		namespace Compressor {
 			/**
 			 * @class Bzip2
+			 * @note MaybeSafe inherits all provider requirements of @ref StormByte::Crypto::Compressor::Generic.
+			 * This leaf adds no fields; exported Clone/Move bind ownership callbacks in Crypto.
 			 * @brief bzip2 compressor.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Bzip2 final: public Generic {
@@ -109,17 +111,13 @@ namespace StormByte {
 					 * @brief Clone this compressor.
 					 * @return Shared pointer to the clone.
 					 */
-					inline PointerType Clone() const override {
-						return MakePointer<Bzip2>(*this);
-					}
+					PointerType Clone() const override;
 
 					/**
 					 * @brief Move this compressor into a new instance.
 					 * @return Shared pointer to the moved compressor.
 					 */
-					inline PointerType Move() noexcept override {
-						return MakePointer<Bzip2>(std::move(*this));
-					}
+					PointerType Move() noexcept override;
 
 				private:
 					/**
@@ -157,3 +155,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Compressor::Bzip2);
