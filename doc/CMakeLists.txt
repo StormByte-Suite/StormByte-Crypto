@@ -17,9 +17,9 @@ if(ENABLE_DOC)
 		set(${name}_TAG_FILE "${tag_file}" PARENT_SCOPE)
 	endfunction()
 
-	download_doxygen_tag(StormByte "http://suite.stormbyte.org/StormByte/StormByte.tag")
-	download_doxygen_tag(StormByte-System "http://suite.stormbyte.org/StormByte-System/StormByte-System.tag")
-	download_doxygen_tag(StormByte-Buffer "http://suite.stormbyte.org/StormByte-Buffer/StormByte-Buffer.tag")
+	download_doxygen_tag(StormByte "https://suite.stormbyte.org/StormByte/StormByte.tag")
+	download_doxygen_tag(StormByte-System "https://suite.stormbyte.org/StormByte-System/StormByte-System.tag")
+	download_doxygen_tag(StormByte-Buffer "https://suite.stormbyte.org/StormByte-Buffer/StormByte-Buffer.tag")
 
 	set(DOXYGEN_PROJECT_NAME "StormByte-Crypto")
 	set(DOXYGEN_PROJECT_NUMBER "${PROJECT_VERSION}")
@@ -54,6 +54,8 @@ if(ENABLE_DOC)
 		"STORMBYTE_BUFFER_PUBLIC:="
 		"STORMBYTE_LOGGER_PUBLIC:="
 		"STORMBYTE_PUBLIC:="
+		"STORMBYTE_FORCE_INLINE:=inline"
+		"STORMBYTE_DECLARE_MAYBE_SAFE(x):="
 		"WINDOWS="
 		"LINUX="
 		"MACOS="
@@ -88,14 +90,15 @@ if(ENABLE_DOC)
 
 	set(DOXYGEN_GENERATE_TAGFILE "${CMAKE_SOURCE_DIR}/docs/StormByte-Crypto.tag")
 	set(DOXYGEN_TAGFILES
-		"${StormByte_TAG_FILE}=http://suite.stormbyte.org/StormByte"
-		"${StormByte-System_TAG_FILE}=http://suite.stormbyte.org/StormByte-System"
-		"${StormByte-Buffer_TAG_FILE}=http://suite.stormbyte.org/StormByte-Buffer"
+		"${StormByte_TAG_FILE}=https://suite.stormbyte.org/StormByte"
+		"${StormByte-System_TAG_FILE}=https://suite.stormbyte.org/StormByte-System"
+		"${StormByte-Buffer_TAG_FILE}=https://suite.stormbyte.org/StormByte-Buffer"
 	)
 
 	set(DOXYGEN_GENERATE_MAN NO)
 	set(DOXYGEN_GENERATE_LATEX NO)
 	set(DOXYGEN_QUIET NO)
+	set(DOXYGEN_WARN_AS_ERROR YES)
 
 	doxygen_add_docs(
 		StormByteCryptoDoc
