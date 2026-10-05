@@ -29,7 +29,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 | Module | Role | API |
 | --- | --- | --- |
-| [Base](https://github.com/StormByte-Suite/StormByte) | Exceptions, Expected, serialization, UUID, concepts, `CString` / `WCString` / `Size` / `ByteSize` | [/StormByte](http://suite.stormbyte.org/StormByte) |
+| [Base](https://github.com/StormByte-Suite/StormByte) | Exceptions, Expected, serialization, UUID, concepts, `Safe::String` / `Safe::WString` / `Size` / `ByteSize` | [/StormByte](http://suite.stormbyte.org/StormByte) |
 | [Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) | FIFO, SharedFIFO, Ring, Producer/Consumer and multi-stage pipelines | [/StormByte-Buffer](http://suite.stormbyte.org/StormByte-Buffer) |
 | [Config](https://github.com/StormByte-Suite/StormByte-Config) | Human-readable text and versioned binary documents (groups, lists, raw bytes) | [/StormByte-Config](http://suite.stormbyte.org/StormByte-Config) |
 | **Crypto** | This repository | [/StormByte-Crypto](http://suite.stormbyte.org/StormByte-Crypto) |
@@ -115,7 +115,7 @@ Ingest is deliberately not `std::string_view` and not `std::string` by value.
 - Literals use `explicit Password(const char*)`. They are copied; the source is not wiped (it lives in read-only storage). Use that form for tests and placeholders, not for production secrets kept in source.
 - Raw bytes (`const void*` + `ByteSize`) are copied and not wiped; the caller owns the source.
 
-The `Safe::String&` overload is for text without embedded NUL bytes: Base reports its length up to the first NUL. For binary secrets use `std::string&` or raw bytes with an explicit `ByteSize`; an embedded NUL in Safe text would truncate both the copied secret and the overwritten region.
+The `Safe::String&` and `std::string&` overloads copy and wipe the full stored length, including embedded NUL bytes. Only the `const char*` overload stops at the first NUL; use a length-bearing string or raw bytes with an explicit `ByteSize` for binary secrets.
 
 ```cpp
 #include <StormByte/crypto/secure/password.hxx>
@@ -296,7 +296,7 @@ auto secret = Secret::Create(Secret::Type::X25519, alice);
 auto shared = secret->Share(bob->PublicKey());
 ```
 
-`Share` takes `std::string_view` (a `String` converts). The result is `std::optional<Secure::Password>`. ECDH is the same with `KeyPair::ECDH::Generate(256|384|521)` and `Secret::Type::ECDH`.
+`Share` takes `std::string_view` (a `Safe::String` converts). The result is `StormByte::Safe::Optional<Secure::Password>`. ECDH is the same with `KeyPair::ECDH::Generate(256|384|521)` and `Secret::Type::ECDH`.
 
 ## Security notes
 

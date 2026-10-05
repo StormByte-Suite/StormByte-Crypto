@@ -135,8 +135,7 @@ namespace StormByte {
 					/**
 					 * @brief From DLL-safe text. Copies into secure storage and wipes @p value.
 					 * @param value Password characters. Emptied and zeroed on return.
-					 * @note Text must not contain embedded NUL bytes: Safe::String reports length up to the first NUL.
-					 * Use std::string& or raw bytes with an explicit size for binary secrets.
+					 * @note Copies and wipes the full stored length, including embedded NUL bytes.
 					 */
 					explicit Password(StormByte::Safe::String& value) noexcept;
 

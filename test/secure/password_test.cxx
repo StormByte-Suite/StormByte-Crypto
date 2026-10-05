@@ -110,6 +110,21 @@ int test_password_construct_from_safe_string() {
 	RETURN_TEST(fn_name, 0);
 }
 
+int test_password_safe_string_preserves_embedded_nuls() {
+	const std::string fn_name = "test_password_safe_string_preserves_embedded_nuls";
+	std::string bytes = std::string(4096, 'x') + "tail";
+	bytes.front() = '\0';
+	bytes[1024] = '\0';
+	bytes.back() = '\0';
+	StormByte::Safe::String raw{std::string_view{bytes}};
+	ASSERT_EQUAL(fn_name, bytes.size(), static_cast<std::size_t>(raw.size()));
+	Password password(raw);
+	ASSERT_TRUE(fn_name, raw.empty());
+	ASSERT_EQUAL(fn_name, bytes.size(), static_cast<std::size_t>(password.Size()));
+	ASSERT_TRUE(fn_name, password == Password(bytes.data(), StormByte::ByteSize{bytes.size()}));
+	RETURN_TEST(fn_name, 0);
+}
+
 int test_password_construct_from_long_string() {
 	const std::string fn_name = "test_password_construct_from_long_string";
 	std::string raw(4096, 's');
@@ -174,9 +189,10 @@ int test_password_self_equality() {
 
 int test_password_binary_not_equal_to_text_of_same_length() {
 	const std::string fn_name = "test_password_binary_not_equal_to_text_of_same_length";
-	const unsigned char bin[] = { 'a', 'b', 'c', 0x00 };
+	const unsigned char bin[] = { 'a', 0x00, 'b', 'c' };
 	Password fromBytes(bin, sizeof(bin));
-	Password fromText("abc");
+	Password fromText("aabc");
+	ASSERT_EQUAL(fn_name, fromBytes.Size(), fromText.Size());
 	ASSERT_FALSE(fn_name, fromBytes == fromText);
 	RETURN_TEST(fn_name, 0);
 }
@@ -232,6 +248,7 @@ int main() {
 	result += test_password_construct_from_c_string();
 	result += test_password_construct_from_string();
 	result += test_password_construct_from_safe_string();
+	result += test_password_safe_string_preserves_embedded_nuls();
 	result += test_password_construct_from_long_string();
 	result += test_password_construct_from_bytes();
 	result += test_password_empty();
