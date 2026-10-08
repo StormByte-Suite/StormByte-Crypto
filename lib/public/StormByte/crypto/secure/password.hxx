@@ -42,19 +42,12 @@
 
 #include <StormByte/byte_size.hxx>
 #include <StormByte/crypto/visibility.h>
-#include <StormByte/platform.h>
 #include <StormByte/safe/pointers.hxx>
 #include <StormByte/safe/string.hxx>
-#include <StormByte/size.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
-#include <string>
+#include <string_view>
 #include <utility>
-
-namespace StormByte::Crypto::Helpers {
-	class SecureContent;
-	struct PasswordAccess;
-}
 
 /**
  * @namespace StormByte
@@ -67,6 +60,22 @@ namespace StormByte {
 	 */
 	namespace Crypto {
 		/**
+		 * @namespace StormByte::Crypto::Helpers
+		 * @brief Private helpers of the Crypto module.
+		 */
+		namespace Helpers {
+			/**
+			 * @brief Private wiped byte storage.
+			 */
+			class SecureContent;
+
+			/**
+			 * @brief Private access to password bytes.
+			 */
+			struct PasswordAccess;
+		}
+
+		/**
 		 * @namespace StormByte::Crypto::Secure
 		 * @brief Wiped secrets of the Crypto module (Password, Vault).
 		 */
@@ -77,28 +86,16 @@ namespace StormByte {
 			 *
 			 * Bytes live in Crypto-owned secure storage behind a Safe::Shared owner and are wiped
 			 * when the last owner is destroyed. Copies share the same buffer. There
-			 * is no public view of the raw bytes: once ingested, the secret only
-			 * exists inside this object (and any @ref StormByte::Crypto::Secure::Vault
-			 * that still holds a share).
+				 * is no public view of the raw bytes. Borrowed input is copied without
+				 * wiping its source; mutable Safe text is copied and then wiped.
 			 * @note MaybeSafe requires compatible compiler ABI and the Crypto module to remain loaded
 			 * while passwords exist. Copy, move, assignment and destruction run out of line in Crypto;
 			 * secure storage is released by its owning module. No caller allocation is adopted.
 			 *
-			 * ## Why ingest is a non-const reference, not a view and not a move
-			 *
-			 * A password that stays in the caller's `std::string`
-			 * after construction is a leftover secret. `std::string_view` cannot wipe
-			 * that source (it does not own it) and would encourage keeping the
-			 * original buffer alive. Passing `std::string` by value or by move across
-			 * a DLL boundary is also unsafe: the string's buffer is allocated by the
-			 * caller's CRT/heap, and destroying or moving it inside this library can
-			 * free the wrong heap.
-			 *
-			 * Therefore the caller *cedes* a non-const `std::string&` or `Safe::String&`.
-			 * Construction copies the bytes into wiped storage and then overwrites and clears the
-			 * source. The std::string overload is force-inlined so its storage operations
-			 * remain in the caller's CRT. After return the argument is empty; the only remaining
-			 * copy is the one Password owns.
+				 * A borrowed std::string_view preserves its full length, including NUL bytes.
+				 * The caller remains responsible for wiping that source and any other copies.
+				 * A mutable Safe::String is ceded instead: construction copies its full length,
+				 * then overwrites and clears the source. No caller allocation is adopted.
 			 *
 			 * String literals (`Password("secret")`) use `const char*`. They are
 			 * copied and the source is not wiped: a literal lives in read-only
@@ -120,37 +117,31 @@ namespace StormByte {
 					Password() noexcept;
 
 					/**
-					 * @brief From a std::string. Copies into secure storage and wipes @p value in the caller's CRT.
-					 * @param value Password characters. Emptied and zeroed on return.
+					 * @brief Copy borrowed text into secure storage without wiping its source.
+					 * @param value Password bytes, including embedded NUL bytes.
+					 * @note The caller is responsible for wiping the source.
 					 */
-					STORMBYTE_FORCE_INLINE explicit Password(std::string& value) noexcept
-						: Password(value.data(), StormByte::ByteSize{value.size()}) {
-						volatile char* bytes = value.data();
-						for (std::size_t index = 0; index < value.size(); ++index)
-							bytes[index] = 0;
-						value.clear();
-						value.shrink_to_fit();
-					}
+					explicit Password(std::string_view value);
 
 					/**
 					 * @brief From DLL-safe text. Copies into secure storage and wipes @p value.
 					 * @param value Password characters. Emptied and zeroed on return.
 					 * @note Copies and wipes the full stored length, including embedded NUL bytes.
 					 */
-					explicit Password(StormByte::Safe::String& value) noexcept;
+					explicit Password(StormByte::Safe::String& value);
 
 					/**
 					 * @brief From a C string up to the terminator. The source is not wiped.
 					 * @param value Null-terminated password (including literals).
 					 */
-					explicit Password(const char* value) noexcept;
+					explicit Password(const char* value);
 
 					/**
 					 * @brief From raw bytes. Exact size; no terminator is added. The source is not wiped.
 					 * @param data Bytes, or nullptr if size is 0.
 					 * @param size Number of bytes.
 					 */
-					Password(const void* data, StormByte::ByteSize size) noexcept;
+					Password(const void* data, StormByte::ByteSize size);
 
 					/**
 					 * @brief Copy constructor. Shares the buffer.
@@ -198,6 +189,7 @@ namespace StormByte {
 
 					/**
 					 * @brief true if the password is not empty.
+					 * @return Whether bytes are stored.
 					 */
 					explicit operator bool() const noexcept;
 
@@ -218,7 +210,7 @@ namespace StormByte {
 				private:
 					friend struct Helpers::PasswordAccess;
 
-					StormByte::Safe::Shared<Helpers::SecureContent> m_data;	///< DLL-safe shared owner of wiped storage
+					StormByte::Safe::Shared<Helpers::SecureContent> m_data;	///< DLL-safe shared owner of wiped storage.
 			};
 		}
 	}

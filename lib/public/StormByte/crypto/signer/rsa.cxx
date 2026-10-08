@@ -38,11 +38,10 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#include <StormByte/crypto/signer/rsa.hxx>
 #include <StormByte/crypto/engine/signer/api.hxx>
-#include <rsa.h>
+#include <StormByte/crypto/signer/rsa.hxx>
 
-#include <string>
+#include <rsa.h>
 #include <string_view>
 
 using namespace StormByte::Crypto::Signer;
@@ -71,10 +70,10 @@ Consumer RSA::DoSign(Consumer consumer, ReadMode mode) const noexcept {
 
 bool RSA::DoVerify(std::span<const std::byte> data, std::string_view signature) const noexcept {
 	return Engine::Signer::Verify<CryptoPP::RSASS<CryptoPP::PKCS1v15, CryptoPP::SHA256>::Verifier, CryptoPP::RSA::PublicKey>(
-		data, std::string{signature}, m_keypair);
+		data, signature, m_keypair);
 }
 
 bool RSA::DoVerify(Consumer consumer, std::string_view signature, ReadMode mode) const noexcept {
 	return Engine::Signer::Verify<CryptoPP::RSASS<CryptoPP::PKCS1v15, CryptoPP::SHA256>::Verifier, CryptoPP::RSA::PublicKey>(
-		consumer, std::string{signature}, m_keypair, mode);
+		consumer, signature, m_keypair, mode);
 }

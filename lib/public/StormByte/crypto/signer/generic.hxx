@@ -41,10 +41,11 @@
 #pragma once
 
 #include <StormByte/buffer/consumer.hxx>
-#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/type_traits.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
@@ -159,11 +160,8 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Sign(const Range& input, Buffer::WriteOnly& output) const {
-						StormByte::BinaryData data;
-						for (const auto value: input) {
-							data.emplace_back(static_cast<std::byte>(value));
-						}
-						return Sign(std::span<const std::byte>(data), output);
+						const StormByte::Safe::Binary data(input);
+						return Sign(data.span(), output);
 					}
 
 					/**
@@ -220,11 +218,8 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Verify(const Range& input, std::string_view signature) const {
-						StormByte::BinaryData data;
-						for (const auto value: input) {
-							data.emplace_back(static_cast<std::byte>(value));
-						}
-						return Verify(std::span<const std::byte>(data), signature);
+						const StormByte::Safe::Binary data(input);
+						return Verify(data.span(), signature);
 					}
 
 					/**

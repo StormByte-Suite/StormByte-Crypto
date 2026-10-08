@@ -44,106 +44,152 @@
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
 
-#include <filters.h>
 #include <hex.h>
-#include <memory>
 #include <secblock.h>
 #include <span>
+#include <utility>
 
 /**
- * @namespace StormByte
- * @brief Root namespace of the StormByte suite.
+ * @namespace StormByte::Crypto::Engine::Hasher
+ * @brief Private hasher implementation.
  */
-namespace StormByte {
+namespace StormByte::Crypto::Engine::Hasher {
 	/**
-	 * @namespace StormByte::Crypto
-	 * @brief Crypto module of the StormByte suite.
+	 * @class ConcreteOps
+	 * @brief Private Crypto++ backend with Crypto-owned construction and destruction.
+	 * @tparam HasherT Crypto++ hash implementation, retained only inside Crypto.
 	 */
-	namespace Crypto {
-		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
-		 */
-		namespace Engine {
+	template<class HasherT>
+	class ConcreteOps final: public Ops {
+		public:
 			/**
-			 * @namespace StormByte::Crypto::Engine::Hasher
-			 * @brief Private hasher implementation.
+			 * @brief Construct the private hash backend.
 			 */
-			namespace Hasher {
-				/**
-				 * @brief One-shot hash. Builds Ops and delegates.
-				 * @tparam HasherT Crypto++ hash type.
-				 * @param dataSpan Input.
-				 * @param output Hex digest destination.
-				 * @return true on success.
-				 */
-				template<class HasherT>
-				STORMBYTE_CRYPTO_PRIVATE bool Hash(std::span<const std::byte> dataSpan, Buffer::WriteOnly& output) noexcept {
-					struct ConcreteOps final : Ops {
-						HasherT hash;
+			ConcreteOps() = default;
 
-						void Update(std::span<const std::byte> in) override {
-							hash.Update(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
-						}
+			/**
+			 * @brief Private backend state cannot be copied.
+			 * @param other Source backend.
+			 */
+			ConcreteOps(const ConcreteOps&) = delete;
 
-						bool Finalize(StormByte::BinaryData& out) override {
-							try {
-								const size_t digestSize = hash.DigestSize();
-								CryptoPP::SecByteBlock digest(digestSize);
-								hash.Final(digest);
+			/**
+			 * @brief Private backend state cannot be moved.
+			 * @param other Source backend.
+			 */
+			ConcreteOps(ConcreteOps&&) = delete;
 
-								CryptoPP::HexEncoder encoder(
-									new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(out)
-								);
-								encoder.Put(digest, digestSize);
-								encoder.MessageEnd();
-								return true;
-							} catch (...) {
-								return false;
-							}
-						}
-					};
+			/**
+			 * @brief Release Crypto++ state in Crypto.
+			 */
+			~ConcreteOps() override = default;
 
-					return ProcessSpan(dataSpan, output, std::make_unique<ConcreteOps>());
-				}
+			/**
+			 * @brief Private backend state cannot be copy-assigned.
+			 * @param other Source backend.
+			 * @return This backend.
+			 */
+			ConcreteOps& operator=(const ConcreteOps&) = delete;
 
-				/**
-				 * @brief Streaming hash. Builds Ops and delegates.
-				 * @tparam HasherT Crypto++ hash type.
-				 * @param consumer Input consumer.
-				 * @param mode Copy or move.
-				 * @return Consumer with the hex digest.
-				 */
-				template<class HasherT>
-				STORMBYTE_CRYPTO_PRIVATE Buffer::Consumer Hash(Buffer::Consumer consumer, ReadMode mode) noexcept {
-					struct ConcreteOps final : Ops {
-						HasherT hash;
+			/**
+			 * @brief Private backend state cannot be move-assigned.
+			 * @param other Source backend.
+			 * @return This backend.
+			 */
+			ConcreteOps& operator=(ConcreteOps&&) = delete;
 
-						void Update(std::span<const std::byte> in) override {
-							hash.Update(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
-						}
+			/**
+			 * @brief Feed a borrowed chunk to Crypto++.
+			 * @param input Bytes consumed synchronously.
+			 */
+			void Update(std::span<const std::byte> input) override {
+				m_hash.Update(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size_bytes());
+			}
 
-						bool Finalize(StormByte::BinaryData& out) override {
-							try {
-								const size_t digestSize = hash.DigestSize();
-								CryptoPP::SecByteBlock digest(digestSize);
-								hash.Final(digest);
+			/**
+			 * @brief Finish the hash and retrieve its uppercase hexadecimal encoding.
+			 * @param output Base-owned digest destination.
+			 * @return Whether finalization and retrieval succeeded.
+			 */
+			bool Finalize(Safe::Binary& output) override {
+				try {
+					const std::size_t digestSize = m_hash.DigestSize();
+					CryptoPP::SecByteBlock digest(digestSize);
+					m_hash.Final(digest);
 
-								CryptoPP::HexEncoder encoder(
-									new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(out)
-								);
-								encoder.Put(digest, digestSize);
-								encoder.MessageEnd();
-								return true;
-							} catch (...) {
-								return false;
-							}
-						}
-					};
-
-					return Stream(std::move(consumer), mode, std::make_unique<ConcreteOps>());
+					CryptoPP::HexEncoder encoder;
+					encoder.Put(digest, digestSize);
+					encoder.MessageEnd();
+					output.resize(ByteSize{digestSize} * 2);
+					const std::size_t outputSize = static_cast<std::size_t>(output.size());
+					return encoder.Get(reinterpret_cast<CryptoPP::byte*>(output.data()), outputSize) == outputSize;
+				} catch (...) {
+					return false;
 				}
 			}
-		}
+
+		private:
+			HasherT m_hash;		///< Crypto++ owning backend, never published outside Crypto.
+	};
+
+	/**
+	 * @brief One-shot hash using a Crypto-created backend.
+	 * @tparam HasherT Crypto++ hash type.
+	 * @param dataSpan Borrowed input bytes.
+	 * @param output Hexadecimal digest destination.
+	 * @return Whether hashing and writing succeeded.
+	 */
+	template<class HasherT>
+	STORMBYTE_CRYPTO_PRIVATE bool Hash(std::span<const std::byte> dataSpan, Buffer::WriteOnly& output) noexcept;
+
+	/**
+	 * @brief Streaming hash using a Crypto-created backend.
+	 * @tparam HasherT Crypto++ hash type.
+	 * @param consumer Input consumer.
+	 * @param mode Copy or move.
+	 * @return Consumer with the hexadecimal digest or a permanent error.
+	 */
+	template<class HasherT>
+	STORMBYTE_CRYPTO_PRIVATE Buffer::Consumer Hash(Buffer::Consumer consumer, ReadMode mode) noexcept;
+}
+
+/**
+ * @brief Register only the exact private backend specialization.
+ * @tparam HasherT Crypto++ hash type owned and destroyed exclusively in Crypto.
+ * @note Safe factories retain the concrete Crypto destructor; Crypto++ allocations
+ *       remain private. Crypto must stay loaded while any backend owner exists.
+ */
+template<class HasherT>
+struct StormByte::Type::IsMaybeSafe<StormByte::Crypto::Engine::Hasher::ConcreteOps<HasherT>>: std::true_type {};
+
+/**
+ * @brief Allocate the private backend on Base's heap and hash borrowed input.
+ * @tparam HasherT Crypto++ hash type.
+ * @param dataSpan Borrowed input bytes.
+ * @param output Hexadecimal digest destination.
+ * @return Whether allocation, hashing and writing succeeded.
+ */
+template<class HasherT>
+bool StormByte::Crypto::Engine::Hasher::Hash(std::span<const std::byte> dataSpan, Buffer::WriteOnly& output) noexcept {
+	try {
+		return ProcessSpan(dataSpan, output, Safe::MakeShared<ConcreteOps<HasherT>>());
+	} catch (...) {
+		return false;
+	}
+}
+
+/**
+ * @brief Allocate the private backend on Base's heap and start streaming.
+ * @tparam HasherT Crypto++ hash type.
+ * @param consumer Input consumer.
+ * @param mode Copy or move.
+ * @return Consumer with the hexadecimal digest or a permanent error.
+ */
+template<class HasherT>
+StormByte::Buffer::Consumer StormByte::Crypto::Engine::Hasher::Hash(Buffer::Consumer consumer, ReadMode mode) noexcept {
+	try {
+		return Stream(std::move(consumer), mode, Safe::MakeShared<ConcreteOps<HasherT>>());
+	} catch (...) {
+		return Stream(std::move(consumer), mode, {});
 	}
 }

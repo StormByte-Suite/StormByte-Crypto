@@ -38,31 +38,27 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#include <StormByte/crypto/secret/ecdh.hxx>
 #include <StormByte/crypto/engine/secret/details.hxx>
-
-#include <string>
-#include <string_view>
+#include <StormByte/crypto/secret/ecdh.hxx>
 
 using namespace StormByte::Crypto::Secret;
 
 ECDH::~ECDH() noexcept = default;
 
-Generic::PointerType ECDH::Clone() const noexcept {
+Generic::PointerType ECDH::Clone() const {
 	return MakePointer<ECDH>(*this);
 }
 
-Generic::PointerType ECDH::Move() noexcept {
+Generic::PointerType ECDH::Move() {
 	return MakePointer<ECDH>(std::move(*this));
 }
 
 StormByte::Safe::Optional<StormByte::Crypto::Secure::Password>
-ECDH::Share(std::string_view peerPublicKey) const
-{
+ECDH::Share(const StormByte::Safe::String& peerPublicKey) const {
 	if (!m_keypair || !m_keypair->HasPrivateKey())
-		return std::nullopt;
+		return {};
 	return Engine::Secret::ECDHShare(
 		*m_keypair->PrivateKey(),
-		std::string(peerPublicKey),
+		peerPublicKey,
 		m_bits);
 }

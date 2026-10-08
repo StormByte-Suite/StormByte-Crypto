@@ -40,7 +40,9 @@
 
 #include <StormByte/crypto/crypter/symmetric/camellia.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/api.hxx>
+
 #include <camellia.h>
+#include <modes.h>
 
 using namespace StormByte::Crypto::Crypter;
 

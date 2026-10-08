@@ -40,6 +40,7 @@
 
 #include <StormByte/crypto/crypter/symmetric/serpent.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/api.hxx>
+#include <modes.h>
 #include <serpent.h>
 
 using namespace StormByte::Crypto::Crypter;

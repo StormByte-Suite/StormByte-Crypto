@@ -45,16 +45,18 @@
 #include <StormByte/test_handlers.h>
 
 using StormByte::Buffer::FIFO;
+using StormByte::Safe::String;
 using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
 
 namespace {
-	std::span<const std::byte> Bytes(const std::string& s) {
-		return { reinterpret_cast<const std::byte*>(s.data()), s.size() };
-	}
-	std::span<const std::byte> Bytes(const FIFO& f) {
-		const auto& d = f.Data();
-		return { d.data(), static_cast<size_t>(d.size()) };
+	/**
+	 * @brief Borrow the bytes of text without discarding embedded NUL characters.
+	 * @param text Text whose storage must outlive the returned view.
+	 * @return View of all text bytes.
+	 */
+	std::span<const std::byte> Bytes(const String& text) {
+		return { reinterpret_cast<const std::byte*>(text.data()), static_cast<std::size_t>(text.size()) };
 	}
 }
 
@@ -63,66 +65,61 @@ namespace {
 // -------------------
 
 int test_rsa_encrypt_decrypt(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt";
-	const std::string message = "This is a test message.";
+	const String message = "This is a test message.";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted));
-	ASSERT_TRUE(fn_name, rsa.Decrypt(Bytes(encrypted), decrypted));
-	ASSERT_EQUAL(fn_name, DeserializeString(decrypted.Data()), message);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted));
+	ASSERT_TRUE(rsa.Decrypt(encrypted.Data().span(), decrypted));
+	ASSERT_EQUAL(DeserializeString(decrypted.Data()), message);
+	RETURN_TEST(0);
 }
 
 int test_rsa_encryption_produces_different_content(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encryption_produces_different_content";
-	const std::string original = "Sensitive message";
+	const String original = "Sensitive message";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(original), encrypted));
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(encrypted.Data()), original);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(original), encrypted));
+	ASSERT_NOT_EQUAL(DeserializeString(encrypted.Data()), original);
+	RETURN_TEST(0);
 }
 
 int test_rsa_encrypt_decrypt_using_consumer_producer(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt_using_consumer_producer";
-	const std::string input = "This is some data to encrypt using the Consumer/Producer model.";
+	const String input = "This is some data to encrypt using the Consumer/Producer model.";
 	Crypter::RSA rsa(kp);
 	StormByte::Buffer::Producer producer;
-	producer.Write(input);
+	producer.Write(static_cast<std::string_view>(input));
 	producer.Close();
 	auto encrypted = rsa.Encrypt(producer.Consumer());
 	auto decrypted = rsa.Decrypt(encrypted);
 	auto data = ReadAllFromConsumer(decrypted);
-	ASSERT_FALSE(fn_name, data.Empty());
-	ASSERT_EQUAL(fn_name, input, DeserializeString(data));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_FALSE(data.Empty());
+	ASSERT_EQUAL(input, DeserializeString(data));
+	RETURN_TEST(0);
 }
 
 int test_rsa_encrypt_decrypt_native_explicit(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt_native_explicit";
-	const std::string message = "Explicit Native strategy round-trip for RSA.";
+	const String message = "Explicit Native strategy round-trip for RSA.";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Native));
-	ASSERT_FALSE(fn_name, encrypted.Empty());
-	ASSERT_TRUE(fn_name, rsa.Decrypt(Bytes(encrypted), decrypted));
-	ASSERT_EQUAL(fn_name, DeserializeString(decrypted.Data()), message);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Native));
+	ASSERT_FALSE(encrypted.Empty());
+	ASSERT_TRUE(rsa.Decrypt(encrypted.Data().span(), decrypted));
+	ASSERT_EQUAL(DeserializeString(decrypted.Data()), message);
+	RETURN_TEST(0);
 }
 
 int test_rsa_encrypt_decrypt_native_explicit_streaming(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt_native_explicit_streaming";
-	const std::string input = "Native explicit streaming with auto-detect decrypt (RSA).";
+	const String input = "Native explicit streaming with auto-detect decrypt (RSA).";
 	Crypter::RSA rsa(kp);
 	StormByte::Buffer::Producer producer;
-	producer.Write(input);
+	producer.Write(static_cast<std::string_view>(input));
 	producer.Close();
 	auto encrypted = rsa.Encrypt(producer.Consumer(), Crypter::Asymmetric::Strategy::Native);
 	auto decrypted = rsa.Decrypt(encrypted);
 	auto data = ReadAllFromConsumer(decrypted);
-	ASSERT_FALSE(fn_name, data.Empty());
-	ASSERT_EQUAL(fn_name, input, DeserializeString(data));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_FALSE(data.Empty());
+	ASSERT_EQUAL(input, DeserializeString(data));
+	RETURN_TEST(0);
 }
 
 // -------------------
@@ -130,41 +127,38 @@ int test_rsa_encrypt_decrypt_native_explicit_streaming(KeyPair::Generic::Pointer
 // -------------------
 
 int test_rsa_encrypt_decrypt_hybrid(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt_hybrid";
-	const std::string message = "This is a hybrid envelope test message for RSA.";
+	const String message = "This is a hybrid envelope test message for RSA.";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
-	ASSERT_FALSE(fn_name, encrypted.Empty());
-	ASSERT_TRUE(fn_name, rsa.Decrypt(Bytes(encrypted), decrypted));
-	ASSERT_EQUAL(fn_name, DeserializeString(decrypted.Data()), message);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
+	ASSERT_FALSE(encrypted.Empty());
+	ASSERT_TRUE(rsa.Decrypt(encrypted.Data().span(), decrypted));
+	ASSERT_EQUAL(DeserializeString(decrypted.Data()), message);
+	RETURN_TEST(0);
 }
 
 int test_rsa_encrypt_decrypt_hybrid_streaming(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_encrypt_decrypt_hybrid_streaming";
-	const std::string input = "This is some data to encrypt using Hybrid envelope with Consumer/Producer model (RSA).";
+	const String input = "This is some data to encrypt using Hybrid envelope with Consumer/Producer model (RSA).";
 	Crypter::RSA rsa(kp);
 	StormByte::Buffer::Producer producer;
-	producer.Write(input);
+	producer.Write(static_cast<std::string_view>(input));
 	producer.Close();
 	auto encrypted = rsa.Encrypt(producer.Consumer(), Crypter::Asymmetric::Strategy::Hybrid);
 	auto decrypted = rsa.Decrypt(encrypted);
 	auto data = ReadAllFromConsumer(decrypted);
-	ASSERT_FALSE(fn_name, data.Empty());
-	ASSERT_EQUAL(fn_name, input, DeserializeString(data));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_FALSE(data.Empty());
+	ASSERT_EQUAL(input, DeserializeString(data));
+	RETURN_TEST(0);
 }
 
 int test_rsa_hybrid_vs_native_different_output(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_hybrid_vs_native_different_output";
-	const std::string message = "Same message for both modes";
+	const String message = "Same message for both modes";
 	Crypter::RSA rsa(kp);
 	FIFO native_encrypted, hybrid_encrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), native_encrypted, Crypter::Asymmetric::Strategy::Native));
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), hybrid_encrypted, Crypter::Asymmetric::Strategy::Hybrid));
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(native_encrypted.Data()), DeserializeString(hybrid_encrypted.Data()));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), native_encrypted, Crypter::Asymmetric::Strategy::Native));
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), hybrid_encrypted, Crypter::Asymmetric::Strategy::Hybrid));
+	ASSERT_NOT_EQUAL(DeserializeString(native_encrypted.Data()), DeserializeString(hybrid_encrypted.Data()));
+	RETURN_TEST(0);
 }
 
 // -------------------
@@ -172,36 +166,33 @@ int test_rsa_hybrid_vs_native_different_output(KeyPair::Generic::PointerType kp)
 // -------------------
 
 int test_rsa_decryption_with_corrupted_data(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_decryption_with_corrupted_data";
-	const std::string message = "Important message!";
+	const String message = "Important message!";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted));
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted));
 	auto corrupted = DeserializeString(encrypted.Data());
-	ASSERT_FALSE(fn_name, corrupted.empty());
+	ASSERT_FALSE(corrupted.empty());
 	corrupted[0] = static_cast<char>(~corrupted[0]);
-	ASSERT_FALSE(fn_name, rsa.Decrypt(Bytes(corrupted), decrypted));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_FALSE(rsa.Decrypt(Bytes(corrupted), decrypted));
+	RETURN_TEST(0);
 }
 
 int test_rsa_decrypt_with_mismatched_key(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_decrypt_with_mismatched_key";
-	const std::string message = "Sensitive message.";
+	const String message = "Sensitive message.";
 	Crypter::RSA rsa(kp);
 	auto kp2 = KeyPair::RSA::Generate(2048);
-	ASSERT_TRUE(fn_name, static_cast<bool>(kp2));
+	ASSERT_TRUE(static_cast<bool>(kp2));
 	Crypter::RSA rsa2(kp2);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted));
-	ASSERT_FALSE(fn_name, rsa2.Decrypt(Bytes(encrypted), decrypted));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted));
+	ASSERT_FALSE(rsa2.Decrypt(encrypted.Data().span(), decrypted));
+	RETURN_TEST(0);
 }
 
 int test_rsa_with_corrupted_keys(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_with_corrupted_keys";
-	const std::string message = "This is a test message.";
+	const String message = "This is a test message.";
 	Crypter::RSA rsa(kp);
-	std::string corrupted_public { std::string_view{kp->PublicKey()} };
+	String corrupted_public { std::string_view{kp->PublicKey()} };
 	if (!corrupted_public.empty())
 		corrupted_public[0] = static_cast<char>(~corrupted_public[0]);
 	auto badKp = KeyPair::RSA::MakePointer<KeyPair::RSA>(
@@ -210,58 +201,57 @@ int test_rsa_with_corrupted_keys(KeyPair::Generic::PointerType kp) {
 	);
 	Crypter::RSA corrupted_rsa(badKp);
 	FIFO encrypted;
-	ASSERT_FALSE(fn_name, corrupted_rsa.Encrypt(Bytes(message), encrypted));
+	ASSERT_FALSE(corrupted_rsa.Encrypt(Bytes(message), encrypted));
 	FIFO encrypted_valid, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted_valid));
-	ASSERT_FALSE(fn_name, corrupted_rsa.Decrypt(Bytes(encrypted_valid), decrypted));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted_valid));
+	ASSERT_FALSE(corrupted_rsa.Decrypt(encrypted_valid.Data().span(), decrypted));
+	RETURN_TEST(0);
 }
 
 int test_rsa_corrupted_hybrid_envelope_fails(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_corrupted_hybrid_envelope_fails";
-	const std::string message = "Hybrid envelope that will be corrupted.";
+	const String message = "Hybrid envelope that will be corrupted.";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
 	auto corrupted = DeserializeString(encrypted.Data());
-	ASSERT_FALSE(fn_name, corrupted.empty());
-	if (corrupted.size() > 8) {
+	ASSERT_FALSE(corrupted.empty());
+	const auto corrupted_size = static_cast<std::size_t>(corrupted.size());
+	if (corrupted_size > 8) {
 		corrupted[0] = static_cast<char>(~corrupted[0]);
-		corrupted[corrupted.size() / 3] = static_cast<char>(corrupted[corrupted.size() / 3] ^ 0x5A);
-		corrupted[corrupted.size() - 1] = static_cast<char>(~corrupted[corrupted.size() - 1]);
-	} else {
-		corrupted[0] = static_cast<char>(~corrupted[0]);
+		corrupted[corrupted_size / 3] = static_cast<char>(corrupted[corrupted_size / 3] ^ 0x5A);
+		corrupted[corrupted_size - 1] = static_cast<char>(~corrupted[corrupted_size - 1]);
 	}
-	ASSERT_FALSE(fn_name, rsa.Decrypt(Bytes(corrupted), decrypted));
-	RETURN_TEST(fn_name, 0);
+	else
+		corrupted[0] = static_cast<char>(~corrupted[0]);
+	ASSERT_FALSE(rsa.Decrypt(Bytes(corrupted), decrypted));
+	RETURN_TEST(0);
 }
 
 int test_rsa_corrupted_native_fails_auto_detect(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_corrupted_native_fails_auto_detect";
-	const std::string message = "Native ciphertext that will be corrupted.";
+	const String message = "Native ciphertext that will be corrupted.";
 	Crypter::RSA rsa(kp);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Native));
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Native));
 	auto corrupted = DeserializeString(encrypted.Data());
-	ASSERT_FALSE(fn_name, corrupted.empty());
+	ASSERT_FALSE(corrupted.empty());
 	corrupted[0] = static_cast<char>(~corrupted[0]);
-	if (corrupted.size() > 2)
-		corrupted[corrupted.size() / 2] = static_cast<char>(corrupted[corrupted.size() / 2] ^ 0xFF);
-	ASSERT_FALSE(fn_name, rsa.Decrypt(Bytes(corrupted), decrypted));
-	RETURN_TEST(fn_name, 0);
+	const auto corrupted_size = static_cast<std::size_t>(corrupted.size());
+	if (corrupted_size > 2)
+		corrupted[corrupted_size / 2] = static_cast<char>(corrupted[corrupted_size / 2] ^ 0xFF);
+	ASSERT_FALSE(rsa.Decrypt(Bytes(corrupted), decrypted));
+	RETURN_TEST(0);
 }
 
 int test_rsa_hybrid_decrypt_with_mismatched_key(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_rsa_hybrid_decrypt_with_mismatched_key";
-	const std::string message = "Hybrid ciphertext, wrong private key.";
+	const String message = "Hybrid ciphertext, wrong private key.";
 	Crypter::RSA rsa(kp);
 	auto kp2 = KeyPair::RSA::Generate(2048);
-	ASSERT_TRUE(fn_name, static_cast<bool>(kp2));
+	ASSERT_TRUE(static_cast<bool>(kp2));
 	Crypter::RSA rsa2(kp2);
 	FIFO encrypted, decrypted;
-	ASSERT_TRUE(fn_name, rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
-	ASSERT_FALSE(fn_name, rsa2.Decrypt(Bytes(encrypted), decrypted));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(rsa.Encrypt(Bytes(message), encrypted, Crypter::Asymmetric::Strategy::Hybrid));
+	ASSERT_FALSE(rsa2.Decrypt(encrypted.Data().span(), decrypted));
+	RETURN_TEST(0);
 }
 
 int main() {

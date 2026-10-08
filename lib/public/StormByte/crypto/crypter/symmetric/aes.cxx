@@ -40,7 +40,9 @@
 
 #include <StormByte/crypto/crypter/symmetric/aes.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/api.hxx>
+
 #include <aes.h>
+#include <modes.h>
 
 using namespace StormByte::Crypto::Crypter;
 

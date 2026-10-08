@@ -50,10 +50,13 @@
 #include <StormByte/crypto/keypair/x25519.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
+#include <StormByte/safe/optional.hxx>
+#include <StormByte/safe/pair.hxx>
+#include <StormByte/safe/string.hxx>
+#include <StormByte/safe/vector.hxx>
 
 #include <aes.h>
 #include <algorithm>
-#include <array>
 #include <asn.h>
 #include <base64.h>
 #include <cctype>
@@ -67,7 +70,6 @@
 #include <iterator>
 #include <modes.h>
 #include <oids.h>
-#include <optional>
 #include <osrng.h>
 #include <pwdbased.h>
 #include <queue.h>
@@ -75,9 +77,7 @@
 #include <secblock.h>
 #include <sha.h>
 #include <span>
-#include <string>
 #include <string_view>
-#include <vector>
 #include <xed25519.h>
 
 using namespace StormByte::Crypto::KeyPair;
@@ -86,13 +86,36 @@ using StormByte::Crypto::Helpers::SecureWipe;
 namespace Secure = StormByte::Crypto::Secure;
 using StormByte::Crypto::Secure::Password;
 using StormByte::Crypto::RNG;
+namespace Safe = StormByte::Safe;
 
 namespace {
 	constexpr unsigned int kPkcs8Pbkdf2Iterations = 10000;
 
-	struct PemBlock {
-		std::string label;
-		std::vector<CryptoPP::byte> der;
+	using PemBlock = Safe::Pair<Safe::String, Safe::Vector<CryptoPP::byte>>;
+
+	template<typename Cleanup>
+	class WipeOnExit {
+		public:
+			explicit WipeOnExit(Cleanup cleanup): m_cleanup(std::move(cleanup)) {}
+
+			WipeOnExit(const WipeOnExit&) = delete;
+
+			WipeOnExit(WipeOnExit&&) = delete;
+
+			~WipeOnExit() noexcept {
+				if (m_active)
+					m_cleanup();
+			}
+
+			WipeOnExit& operator=(const WipeOnExit&) = delete;
+
+			WipeOnExit& operator=(WipeOnExit&&) = delete;
+
+			void Release() noexcept { m_active = false; }
+
+		private:
+			Cleanup m_cleanup;
+			bool m_active = true;
 	};
 
 	CryptoPP::OID MakeOid(std::initializer_list<CryptoPP::word32> arcs) {
@@ -109,15 +132,20 @@ namespace {
 	const CryptoPP::OID kOidAes192Cbc = MakeOid({2, 16, 840, 1, 101, 3, 4, 1, 22});
 	const CryptoPP::OID kOidAes256Cbc = MakeOid({2, 16, 840, 1, 101, 3, 4, 1, 42});
 
-	std::vector<CryptoPP::byte> ReadFileBytes(const std::filesystem::path& path) noexcept {
+	Safe::Vector<CryptoPP::byte> ReadFileBytes(const std::filesystem::path& path) noexcept {
 		try {
 			std::ifstream ifs(path, std::ios::in | std::ios::binary);
 			if (!ifs)
 				return {};
-			return std::vector<CryptoPP::byte>(
-				(std::istreambuf_iterator<char>(ifs)),
-				std::istreambuf_iterator<char>()
-			);
+			CryptoPP::ByteQueue queue;
+			for (std::istreambuf_iterator<char> current(ifs), end; current != end; ++current)
+				queue.Put(static_cast<CryptoPP::byte>(*current));
+			Safe::Vector<CryptoPP::byte> bytes(queue.CurrentSize());
+			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
+			if (!bytes.empty())
+				queue.Get(bytes.data(), bytes.size());
+			wipeBytes.Release();
+			return bytes;
 		} catch (...) {
 			return {};
 		}
@@ -152,85 +180,97 @@ namespace {
 	bool IsPemText(std::span<const CryptoPP::byte> data) noexcept {
 		if (data.size() < 11)
 			return false;
-		const std::string_view head(
-			reinterpret_cast<const char*>(data.data()),
-			std::min<size_t>(data.size(), 64)
-		);
-		return head.find("-----BEGIN") != std::string_view::npos;
+		constexpr char marker[] = "-----BEGIN";
+		const auto head = data.first(std::min<size_t>(data.size(), 64));
+		return std::search(head.begin(), head.end(), marker, marker + sizeof(marker) - 1) != head.end();
 	}
 
-	std::string Base64Encode(const CryptoPP::byte* data, size_t len) {
-		std::string out;
-		CryptoPP::StringSource(
-			data, len, true,
-			new CryptoPP::Base64Encoder(new CryptoPP::StringSink(out), false)
-		);
+	Safe::String Base64Encode(const CryptoPP::byte* data, size_t len) {
+		CryptoPP::Base64Encoder encoder(nullptr, false);
+		encoder.Put(data, len);
+		encoder.MessageEnd();
+		Safe::String out;
+		WipeOnExit wipeOutput([&]() noexcept { SecureWipe(out); });
+		out.resize(encoder.MaxRetrievable());
+		encoder.Get(reinterpret_cast<CryptoPP::byte*>(out.data()), static_cast<size_t>(out.size()));
+		wipeOutput.Release();
 		return out;
 	}
 
-	std::vector<CryptoPP::byte> Base64Decode(std::string_view b64) {
-		std::string filtered;
-		filtered.reserve(b64.size());
+	Safe::Vector<CryptoPP::byte> Base64Decode(const Safe::String& b64) {
+		CryptoPP::Base64Decoder decoder;
 		for (unsigned char c : b64) {
 			if (!std::isspace(c))
-				filtered.push_back(static_cast<char>(c));
+				decoder.Put(c);
 		}
-		std::string decoded;
-		CryptoPP::StringSource(
-			filtered, true,
-			new CryptoPP::Base64Decoder(new CryptoPP::StringSink(decoded))
-		);
-		return std::vector<CryptoPP::byte>(
-			reinterpret_cast<const CryptoPP::byte*>(decoded.data()),
-			reinterpret_cast<const CryptoPP::byte*>(decoded.data()) + decoded.size()
-		);
+		decoder.MessageEnd();
+		Safe::Vector<CryptoPP::byte> decoded(decoder.MaxRetrievable());
+		WipeOnExit wipeDecoded([&]() noexcept { SecureWipe(decoded); });
+		decoder.Get(decoded.data(), decoded.size());
+		wipeDecoded.Release();
+		return decoded;
 	}
 
-	std::string PemEncode(std::string_view label, const CryptoPP::byte* der, size_t derLen) {
-		const std::string b64 = Base64Encode(der, derLen);
-		std::string pem;
-		pem.reserve(b64.size() + label.size() + 64);
+	Safe::String PemEncode(std::string_view label, const CryptoPP::byte* der, size_t derLen) {
+		auto b64 = Base64Encode(der, derLen);
+		WipeOnExit wipeBase64([&]() noexcept { SecureWipe(b64); });
+		Safe::String pem;
+		WipeOnExit wipePemOnFailure([&]() noexcept { SecureWipe(pem); });
+		const size_t encodedSize = static_cast<size_t>(b64.size());
+		const size_t lineCount = encodedSize / 64 + (encodedSize % 64 != 0);
+		pem.reserve(encodedSize + 2 * label.size() + 32 + lineCount);
 		pem += "-----BEGIN ";
 		pem += label;
 		pem += "-----\n";
-		for (size_t i = 0; i < b64.size(); i += 64) {
-			pem.append(b64, i, 64);
+		for (size_t i = 0; i < static_cast<size_t>(b64.size()); i += 64) {
+			pem.append(b64.data() + i, b64.data() + std::min(i + 64, encodedSize));
 			pem += '\n';
 		}
 		pem += "-----END ";
 		pem += label;
 		pem += "-----\n";
+		wipePemOnFailure.Release();
 		return pem;
 	}
 
-	std::vector<PemBlock> PemDecodeAll(std::span<const CryptoPP::byte> data) {
-		std::vector<PemBlock> blocks;
-		const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
+	Safe::Vector<PemBlock> PemDecodeAll(std::span<const CryptoPP::byte> data) {
+		Safe::Vector<PemBlock> blocks;
+		WipeOnExit wipeBlocks([&]() noexcept {
+			for (auto& block : blocks)
+				SecureWipe(block.second);
+		});
+		Safe::String text(data.begin(), data.end());
+		WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
 		size_t pos = 0;
 		while (pos < text.size()) {
-			const size_t beginMark = text.find("-----BEGIN ", pos);
-			if (beginMark == std::string_view::npos)
+			const size_t beginMark = static_cast<size_t>(text.find("-----BEGIN ", pos));
+			if (beginMark == static_cast<size_t>(Safe::String::npos))
 				break;
 			const size_t labelStart = beginMark + 11;
-			const size_t labelEnd = text.find("-----", labelStart);
-			if (labelEnd == std::string_view::npos)
+			const size_t labelEnd = static_cast<size_t>(text.find("-----", labelStart));
+			if (labelEnd == static_cast<size_t>(Safe::String::npos))
 				break;
-			std::string_view labelView = text.substr(labelStart, labelEnd - labelStart);
-			while (!labelView.empty() && std::isspace(static_cast<unsigned char>(labelView.back())))
-				labelView.remove_suffix(1);
+			Safe::String label(text, labelStart, labelEnd - labelStart);
+			while (!label.empty() && std::isspace(static_cast<unsigned char>(label.back())))
+				label.pop_back();
 			const size_t headerEnd = labelEnd + 5;
-			const std::string endToken = std::string("-----END ") + std::string(labelView) + "-----";
-			const size_t endMark = text.find(endToken, headerEnd);
-			if (endMark == std::string_view::npos)
+			Safe::String endToken("-----END ");
+			endToken += label;
+			endToken += "-----";
+			const size_t endMark = static_cast<size_t>(text.find(endToken, headerEnd));
+			if (endMark == static_cast<size_t>(Safe::String::npos))
 				break;
-			const std::string_view body = text.substr(headerEnd, endMark - headerEnd);
+			Safe::String body(text, headerEnd, endMark - headerEnd);
+			WipeOnExit wipeBody([&]() noexcept { SecureWipe(body); });
 			PemBlock block;
-			block.label.assign(labelView);
-			block.der = Base64Decode(body);
-			if (!block.der.empty())
+			WipeOnExit wipeBlock([&]() noexcept { SecureWipe(block.second); });
+			block.first = std::move(label);
+			block.second = Base64Decode(body);
+			if (!block.second.empty())
 				blocks.push_back(std::move(block));
-			pos = endMark + endToken.size();
+			pos = endMark + static_cast<size_t>(endToken.size());
 		}
+		wipeBlocks.Release();
 		return blocks;
 	}
 
@@ -246,11 +286,11 @@ namespace {
 			|| label == "ENCRYPTED PRIVATE KEY";
 	}
 
-	bool LabelIsEncrypted(std::string_view label, std::string_view fullText) noexcept {
+	bool LabelIsEncrypted(std::string_view label, const Safe::String& fullText) noexcept {
 		if (label == "ENCRYPTED PRIVATE KEY")
 			return true;
-		return fullText.find("Proc-Type:") != std::string_view::npos
-			&& fullText.find("ENCRYPTED") != std::string_view::npos;
+		return fullText.find("Proc-Type:") != Safe::String::npos
+			&& fullText.find("ENCRYPTED") != Safe::String::npos;
 	}
 
 	bool ContainsOid(std::span<const CryptoPP::byte> der, std::span<const CryptoPP::byte> oid) noexcept {
@@ -367,56 +407,62 @@ namespace {
 		return TryLoadEcPrivateSec1(der, priv);
 	}
 
-	std::vector<CryptoPP::byte> RsaPrivateToPkcs8Der(const CryptoPP::RSA::PrivateKey& priv) {
+	Safe::Vector<CryptoPP::byte> RsaPrivateToPkcs8Der(const CryptoPP::RSA::PrivateKey& priv) {
 		CryptoPP::ByteQueue q;
 		priv.Save(q);
-		std::vector<CryptoPP::byte> out(q.CurrentSize());
+		Safe::Vector<CryptoPP::byte> out(q.CurrentSize());
+		WipeOnExit wipeOutput([&]() noexcept { SecureWipe(out); });
 		if (!out.empty())
 			q.Get(out.data(), out.size());
+		wipeOutput.Release();
 		return out;
 	}
 
-	std::vector<CryptoPP::byte> EcPrivateToPkcs8Der(const CryptoPP::ECIES<CryptoPP::ECP>::PrivateKey& priv) {
+	Safe::Vector<CryptoPP::byte> EcPrivateToPkcs8Der(const CryptoPP::ECIES<CryptoPP::ECP>::PrivateKey& priv) {
 		CryptoPP::ByteQueue q;
 		priv.Save(q);
-		std::vector<CryptoPP::byte> out(q.CurrentSize());
+		Safe::Vector<CryptoPP::byte> out(q.CurrentSize());
+		WipeOnExit wipeOutput([&]() noexcept { SecureWipe(out); });
 		if (!out.empty())
 			q.Get(out.data(), out.size());
+		wipeOutput.Release();
 		return out;
 	}
 
-	std::vector<CryptoPP::byte> DsaPrivateToPkcs8Der(const CryptoPP::DSA::PrivateKey& priv) {
+	Safe::Vector<CryptoPP::byte> DsaPrivateToPkcs8Der(const CryptoPP::DSA::PrivateKey& priv) {
 		CryptoPP::ByteQueue q;
 		priv.Save(q);
-		std::vector<CryptoPP::byte> out(q.CurrentSize());
+		Safe::Vector<CryptoPP::byte> out(q.CurrentSize());
+		WipeOnExit wipeOutput([&]() noexcept { SecureWipe(out); });
 		if (!out.empty())
 			q.Get(out.data(), out.size());
+		wipeOutput.Release();
 		return out;
 	}
 
 	bool DetectTypeFromDer(std::span<const CryptoPP::byte> der, Type& out) noexcept {
-		constexpr std::array<CryptoPP::byte, 11> oid_rsa{
+		constexpr CryptoPP::byte oid_rsa[]{
 			0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01
 		};
-		constexpr std::array<CryptoPP::byte, 9> oid_ec{
+		constexpr CryptoPP::byte oid_ec[]{
 			0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01
 		};
-		constexpr std::array<CryptoPP::byte, 10> oid_secp256r1{
+		constexpr CryptoPP::byte oid_secp256r1[]{
 			0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07
 		};
-		constexpr std::array<CryptoPP::byte, 7> oid_secp384r1{
+		constexpr CryptoPP::byte oid_secp384r1[]{
 			0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22
 		};
-		constexpr std::array<CryptoPP::byte, 7> oid_secp521r1{
+		constexpr CryptoPP::byte oid_secp521r1[]{
 			0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x23
 		};
-		constexpr std::array<CryptoPP::byte, 9> oid_dsa{
+		constexpr CryptoPP::byte oid_dsa[]{
 			0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x38, 0x04, 0x01
 		};
-		constexpr std::array<CryptoPP::byte, 5> oid_ed25519{
+		constexpr CryptoPP::byte oid_ed25519[]{
 			0x06, 0x03, 0x2B, 0x65, 0x70
 		};
-		constexpr std::array<CryptoPP::byte, 5> oid_x25519{
+		constexpr CryptoPP::byte oid_x25519[]{
 			0x06, 0x03, 0x2B, 0x65, 0x6E
 		};
 		if (ContainsOid(der, oid_rsa)) {
@@ -492,7 +538,7 @@ namespace {
 		return false;
 	}
 
-	std::string PublicDerToStored(std::span<const CryptoPP::byte> der) {
+	Safe::String PublicDerToStored(std::span<const CryptoPP::byte> der) {
 		return Base64Encode(der.data(), der.size());
 	}
 
@@ -503,22 +549,22 @@ namespace {
 		return pwd;
 	}
 
-	std::vector<CryptoPP::byte> PublicStoredToDer(std::string_view stored) {
+	Safe::Vector<CryptoPP::byte> PublicStoredToDer(const Safe::String& stored) {
 		return Base64Decode(stored);
 	}
 
-	std::vector<CryptoPP::byte> PrivatePasswordToDer(const Secure::Password& pwd) {
+	Safe::Vector<CryptoPP::byte> PrivatePasswordToDer(const Secure::Password& pwd) {
 		const auto* data = PasswordAccess::Data(pwd);
 		const size_t n = PasswordAccess::Size(pwd);
 		if (!data || n == 0)
 			return {};
-		return std::vector<CryptoPP::byte>(data, data + n);
+		return Safe::Vector<CryptoPP::byte>(data, data + n);
 	}
 
 	bool DecryptPkcs8EncryptedDer(
 		std::span<const CryptoPP::byte> encDer,
 		const Secure::Password& password,
-		std::vector<CryptoPP::byte>& outPlainPkcs8
+		Safe::Vector<CryptoPP::byte>& outPlainPkcs8
 	) noexcept {
 		CryptoPP::SecByteBlock salt, iv, key, ciphertext;
 		try {
@@ -596,33 +642,24 @@ namespace {
 				CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA1> pbkdf;
 				pbkdf.DeriveKey(key, key.size(), 0, pass, passLen, salt, salt.size(), iterations);
 			}
-			std::string plainStr;
 			CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption dec;
 			dec.SetKeyWithIV(key, key.size(), iv, iv.size());
-			CryptoPP::StringSource(
-				ciphertext.data(), ciphertext.size(), true,
-				new CryptoPP::StreamTransformationFilter(
-					dec,
-					new CryptoPP::StringSink(plainStr),
-					CryptoPP::BlockPaddingSchemeDef::PKCS_PADDING
-				)
-			);
-			outPlainPkcs8.assign(
-				reinterpret_cast<const CryptoPP::byte*>(plainStr.data()),
-				reinterpret_cast<const CryptoPP::byte*>(plainStr.data()) + plainStr.size()
-			);
+			CryptoPP::StreamTransformationFilter filter(dec, nullptr, CryptoPP::BlockPaddingSchemeDef::PKCS_PADDING);
+			filter.Put(ciphertext.data(), ciphertext.size());
+			filter.MessageEnd();
+			outPlainPkcs8.resize(filter.MaxRetrievable());
+			filter.Get(outPlainPkcs8.data(), outPlainPkcs8.size());
 			SecureWipe(salt);
 			SecureWipe(iv);
 			SecureWipe(key);
 			SecureWipe(ciphertext);
-			SecureWipe(plainStr);
 			return !outPlainPkcs8.empty();
 		} catch (...) {
 			SecureWipe(salt);
 			SecureWipe(iv);
 			SecureWipe(key);
 			SecureWipe(ciphertext);
-			outPlainPkcs8.clear();
+			SecureWipe(outPlainPkcs8);
 			return false;
 		}
 	}
@@ -630,7 +667,7 @@ namespace {
 	bool EncryptPkcs8Der(
 		std::span<const CryptoPP::byte> plainPkcs8,
 		const Secure::Password& password,
-		std::vector<CryptoPP::byte>& outEncDer
+		Safe::Vector<CryptoPP::byte>& outEncDer
 	) noexcept {
 		CryptoPP::SecByteBlock salt, iv, key, ciphertext;
 		try {
@@ -645,21 +682,13 @@ namespace {
 			key.CleanNew(32);
 			CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf;
 			pbkdf.DeriveKey(key, key.size(), 0, pass, passLen, salt, salt.size(), kPkcs8Pbkdf2Iterations);
-			std::string cipherStr;
 			CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption enc;
 			enc.SetKeyWithIV(key, key.size(), iv, iv.size());
-			CryptoPP::StringSource(
-				plainPkcs8.data(), plainPkcs8.size(), true,
-				new CryptoPP::StreamTransformationFilter(
-					enc,
-					new CryptoPP::StringSink(cipherStr),
-					CryptoPP::BlockPaddingSchemeDef::PKCS_PADDING
-				)
-			);
-			ciphertext.Assign(
-				reinterpret_cast<const CryptoPP::byte*>(cipherStr.data()),
-				cipherStr.size()
-			);
+			CryptoPP::StreamTransformationFilter filter(enc, nullptr, CryptoPP::BlockPaddingSchemeDef::PKCS_PADDING);
+			filter.Put(plainPkcs8.data(), plainPkcs8.size());
+			filter.MessageEnd();
+			ciphertext.CleanNew(filter.MaxRetrievable());
+			filter.Get(ciphertext.data(), ciphertext.size());
 			CryptoPP::ByteQueue queue;
 			{
 				CryptoPP::DERSequenceEncoder outer(queue);
@@ -706,7 +735,6 @@ namespace {
 			SecureWipe(iv);
 			SecureWipe(key);
 			SecureWipe(ciphertext);
-			SecureWipe(cipherStr);
 			return !outEncDer.empty();
 		} catch (...) {
 			SecureWipe(salt);
@@ -719,7 +747,7 @@ namespace {
 	}
 
 	bool TryDecryptPrivateDer(
-		std::vector<CryptoPP::byte>& privDer,
+		Safe::Vector<CryptoPP::byte>& privDer,
 		bool wasEncrypted,
 		const Password* password
 	) noexcept {
@@ -727,7 +755,8 @@ namespace {
 			return true;
 		if (!password)
 			return false;
-		std::vector<CryptoPP::byte> plain;
+		Safe::Vector<CryptoPP::byte> plain;
+		WipeOnExit wipePlain([&]() noexcept { SecureWipe(plain); });
 		if (!DecryptPkcs8EncryptedDer(privDer, *password, plain))
 			return false;
 		SecureWipe(privDer);
@@ -738,7 +767,7 @@ namespace {
 	bool DerivePublicDerFromPrivate(
 		Type type,
 		std::span<const CryptoPP::byte> privDer,
-		std::vector<CryptoPP::byte>& outPubDer
+		Safe::Vector<CryptoPP::byte>& outPubDer
 	) noexcept {
 		try {
 			CryptoPP::ByteQueue pubQueue;
@@ -807,7 +836,7 @@ namespace {
 		}
 	}
 
-	Generic::PointerType MakeKeyPair(Type type, std::string pubStored, StormByte::Safe::Optional<Secure::Password> priv) noexcept {
+	Generic::PointerType MakeKeyPair(Type type, Safe::String pubStored, StormByte::Safe::Optional<Secure::Password> priv) {
 		switch (type) {
 			case Type::DSA:
 				return DSA::MakePointer<DSA>(pubStored, std::move(priv));
@@ -841,12 +870,16 @@ namespace {
 	}
 
 	Generic::PointerType BuildFromMaterial(
-		std::optional<std::vector<CryptoPP::byte>> pubDer,
-		std::optional<std::vector<CryptoPP::byte>> privDer,
+		Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer,
+		Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer,
 		Type hint
 	) noexcept {
+		WipeOnExit wipePrivate([&]() noexcept {
+			if (privDer)
+				SecureWipe(*privDer);
+		});
 		try {
-			auto isRaw32Vec = [](const std::vector<CryptoPP::byte>& v) noexcept {
+			auto isRaw32Vec = [](const Safe::Vector<CryptoPP::byte>& v) noexcept {
 				return IsRaw32(v);
 			};
 			Type type = hint;
@@ -893,7 +926,7 @@ namespace {
 			}
 			if (type == Type::X25519) {
 				CryptoPP::SecByteBlock privRaw(32), pubRaw(32);
-				constexpr std::array<CryptoPP::byte, 5> oid_x25519{
+				constexpr CryptoPP::byte oid_x25519[]{
 					0x06, 0x03, 0x2B, 0x65, 0x6E
 				};
 				if (privDer && !privDer->empty()) {
@@ -920,7 +953,7 @@ namespace {
 						CryptoPP::x25519 ag;
 						ag.GeneratePublicKey(RNG(), privRaw, pubRaw);
 					}
-					std::string pubStored = Base64Encode(pubRaw.data(), pubRaw.size());
+					Safe::String pubStored = Base64Encode(pubRaw.data(), pubRaw.size());
 					Secure::Password privPwd = PrivateDerToPassword(
 						std::span<const CryptoPP::byte>(privRaw.data(), privRaw.size())
 					);
@@ -937,7 +970,7 @@ namespace {
 						{ }
 					else
 						return nullptr;
-					std::string pubStored = Base64Encode(pubRaw.data(), pubRaw.size());
+					Safe::String pubStored = Base64Encode(pubRaw.data(), pubRaw.size());
 					SecureWipe(pubRaw);
 					return MakeKeyPair(Type::X25519, std::move(pubStored), std::nullopt);
 				}
@@ -950,13 +983,14 @@ namespace {
 						if (!TryLoadEcPrivate(*privDer, priv))
 							return nullptr;
 						auto pkcs8 = EcPrivateToPkcs8Der(priv);
+						WipeOnExit wipePkcs8([&]() noexcept { SecureWipe(pkcs8); });
 						if (pkcs8.empty())
 							return nullptr;
 						Secure::Password privPwd = PrivateDerToPassword(
 							std::span<const CryptoPP::byte>(pkcs8.data(), pkcs8.size())
 						);
 						SecureWipe(pkcs8);
-						std::string pubStored;
+						Safe::String pubStored;
 						if (pubDer && !pubDer->empty()) {
 							pubStored = PublicDerToStored(*pubDer);
 						} else {
@@ -976,7 +1010,7 @@ namespace {
 						pub.Load(src);
 						if (!pub.Validate(RNG(), 2))
 							return nullptr;
-						std::string pubStored = PublicDerToStored(*pubDer);
+						Safe::String pubStored = PublicDerToStored(*pubDer);
 						return MakeKeyPair(type, std::move(pubStored), std::nullopt);
 					} catch (...) {
 						return nullptr;
@@ -988,7 +1022,8 @@ namespace {
 			if (privDer && !privDer->empty()) {
 				try {
 					bool ok = false;
-					std::vector<CryptoPP::byte> normalized;
+					Safe::Vector<CryptoPP::byte> normalized;
+					WipeOnExit wipeNormalized([&]() noexcept { SecureWipe(normalized); });
 					switch (type) {
 						case Type::RSA: {
 							CryptoPP::RSA::PrivateKey priv;
@@ -1026,11 +1061,11 @@ namespace {
 					return nullptr;
 				}
 			}
-			std::string pubStored;
+			Safe::String pubStored;
 			if (pubDer && !pubDer->empty()) {
 				pubStored = PublicDerToStored(*pubDer);
 			} else if (privDer && !privDer->empty()) {
-				std::vector<CryptoPP::byte> derived;
+				Safe::Vector<CryptoPP::byte> derived;
 				if (!DerivePublicDerFromPrivate(type, *privDer, derived))
 					return nullptr;
 				pubStored = PublicDerToStored(derived);
@@ -1046,27 +1081,38 @@ namespace {
 	Generic::PointerType LoadFromBytes(
 		std::span<const CryptoPP::byte> data,
 		const Password* password
-	) noexcept {
+	) {
 		if (data.empty())
 			return nullptr;
 		if (IsPemText(data)) {
-			const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
+			Safe::String text(data.begin(), data.end());
+			WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
 			auto blocks = PemDecodeAll(data);
 			if (blocks.empty())
 				return nullptr;
-			std::optional<std::vector<CryptoPP::byte>> pubDer;
-			std::optional<std::vector<CryptoPP::byte>> privDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
+			WipeOnExit wipePrivate([&]() noexcept {
+				if (privDer)
+					SecureWipe(*privDer);
+			});
+			WipeOnExit wipeBlocks([&]() noexcept {
+				for (auto& block : blocks)
+					SecureWipe(block.second);
+			});
 			bool privEncrypted = false;
 			Type hint = Type::RSA;
 			for (const auto& b : blocks) {
-				if (LabelIsPublic(b.label)) {
-					pubDer = b.der;
-					DetectTypeFromDer(b.der, hint);
-				} else if (LabelIsPrivate(b.label)) {
-					privEncrypted = LabelIsEncrypted(b.label, text);
-					privDer = b.der;
+				if (LabelIsPublic(b.first)) {
+					pubDer = b.second;
+					DetectTypeFromDer(b.second, hint);
+				} else if (LabelIsPrivate(b.first)) {
+					privEncrypted = LabelIsEncrypted(b.first, text);
+					if (privDer)
+						SecureWipe(*privDer);
+					privDer = b.second;
 					if (!privEncrypted)
-						DetectTypeFromDer(b.der, hint);
+						DetectTypeFromDer(b.second, hint);
 				}
 			}
 			if (privDer) {
@@ -1077,11 +1123,14 @@ namespace {
 			}
 			return BuildFromMaterial(std::move(pubDer), std::move(privDer), hint);
 		}
-		std::vector<CryptoPP::byte> copy(data.begin(), data.end());
+		Safe::Vector<CryptoPP::byte> copy(data.begin(), data.end());
+		WipeOnExit wipeCopy([&]() noexcept { SecureWipe(copy); });
 		if (password) {
-			std::vector<CryptoPP::byte> plain;
+			Safe::Vector<CryptoPP::byte> plain;
+			WipeOnExit wipePlain([&]() noexcept { SecureWipe(plain); });
 			if (!DecryptPkcs8EncryptedDer(copy, *password, plain))
 				return nullptr;
+			SecureWipe(copy);
 			copy = std::move(plain);
 		}
 		Type hint = Type::RSA;
@@ -1089,37 +1138,40 @@ namespace {
 		auto asPriv = BuildFromMaterial(std::nullopt, copy, hint);
 		if (asPriv)
 			return asPriv;
-		std::vector<CryptoPP::byte> copyPub(data.begin(), data.end());
+		Safe::Vector<CryptoPP::byte> copyPub(data.begin(), data.end());
+		WipeOnExit wipeCopyPublic([&]() noexcept { SecureWipe(copyPub); });
 		DetectTypeFromDer(copyPub, hint);
 		return BuildFromMaterial(std::move(copyPub), std::nullopt, hint);
 	}
 
-	std::string ExtensionFor(StorageFormat format, bool isPublic) {
+	std::string_view ExtensionFor(StorageFormat format, bool isPublic) {
 		if (format == StorageFormat::DER)
 			return isPublic ? ".pub.der" : ".der";
 		return isPublic ? ".pub.pem" : ".pem";
 	}
 
-	bool WritePublicFile(const std::filesystem::path& path, std::string_view pubStored, StorageFormat format) noexcept {
+	bool WritePublicFile(const std::filesystem::path& path, const Safe::String& pubStored, StorageFormat format) {
 		auto der = PublicStoredToDer(pubStored);
 		if (der.empty())
 			return false;
 		if (format == StorageFormat::DER)
 			return WriteFileBytes(path, der.data(), der.size());
-		const std::string pem = PemEncode("PUBLIC KEY", der.data(), der.size());
-		return WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), pem.size());
+		const Safe::String pem = PemEncode("PUBLIC KEY", der.data(), der.size());
+		return WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
 	}
 
-	bool WritePrivateFile(const std::filesystem::path& path, const Secure::Password& priv, StorageFormat format) noexcept {
+	bool WritePrivateFile(const std::filesystem::path& path, const Secure::Password& priv, StorageFormat format) {
 		auto der = PrivatePasswordToDer(priv);
+		WipeOnExit wipeDer([&]() noexcept { SecureWipe(der); });
 		if (der.empty())
 			return false;
 		bool ok = false;
 		if (format == StorageFormat::DER) {
 			ok = WriteFileBytes(path, der.data(), der.size());
 		} else {
-			const std::string pem = PemEncode("PRIVATE KEY", der.data(), der.size());
-			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), pem.size());
+			auto pem = PemEncode("PRIVATE KEY", der.data(), der.size());
+			WipeOnExit wipePem([&]() noexcept { SecureWipe(pem); });
+			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
 		}
 		SecureWipe(der);
 		if (ok)
@@ -1132,11 +1184,13 @@ namespace {
 		const Secure::Password& privMaterial,
 		const Secure::Password& encryptPassword,
 		StorageFormat format
-	) noexcept {
+	) {
 		auto plainDer = PrivatePasswordToDer(privMaterial);
+		WipeOnExit wipePlain([&]() noexcept { SecureWipe(plainDer); });
 		if (plainDer.empty())
 			return false;
-		std::vector<CryptoPP::byte> encDer;
+		Safe::Vector<CryptoPP::byte> encDer;
+		WipeOnExit wipeEncrypted([&]() noexcept { SecureWipe(encDer); });
 		const bool encrypted = EncryptPkcs8Der(plainDer, encryptPassword, encDer);
 		SecureWipe(plainDer);
 		if (!encrypted || encDer.empty())
@@ -1145,8 +1199,8 @@ namespace {
 		if (format == StorageFormat::DER) {
 			ok = WriteFileBytes(path, encDer.data(), encDer.size());
 		} else {
-			const std::string pem = PemEncode("ENCRYPTED PRIVATE KEY", encDer.data(), encDer.size());
-			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), pem.size());
+			const Safe::String pem = PemEncode("ENCRYPTED PRIVATE KEY", encDer.data(), encDer.size());
+			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
 		}
 		SecureWipe(encDer);
 		if (ok)
@@ -1180,11 +1234,15 @@ bool Generic::Save(PathView directoryView, std::string_view baseName, StorageFor
 			return false;
 		if (m_public_key.empty())
 			return false;
-		const auto pubPath = directory / (std::string{baseName} + ExtensionFor(format, true));
+		Safe::String pubName(baseName);
+		pubName += ExtensionFor(format, true);
+		const auto pubPath = directory / std::filesystem::path(static_cast<std::string_view>(pubName));
 		if (!WritePublicFile(pubPath, m_public_key, format))
 			return false;
 		if (m_private_key.has_value()) {
-			const auto privPath = directory / (std::string{baseName} + ExtensionFor(format, false));
+			Safe::String privName(baseName);
+			privName += ExtensionFor(format, false);
+			const auto privPath = directory / std::filesystem::path(static_cast<std::string_view>(privName));
 			const Secure::Password privateKey = *m_private_key;
 			if (!WritePrivateFile(privPath, privateKey, format))
 				return false;
@@ -1208,10 +1266,14 @@ bool Generic::Save(
 			return false;
 		if (m_public_key.empty() || !m_private_key.has_value())
 			return false;
-		const auto pubPath = directory / (std::string{baseName} + ExtensionFor(format, true));
+		Safe::String pubName(baseName);
+		pubName += ExtensionFor(format, true);
+		const auto pubPath = directory / std::filesystem::path(static_cast<std::string_view>(pubName));
 		if (!WritePublicFile(pubPath, m_public_key, format))
 			return false;
-		const auto privPath = directory / (std::string{baseName} + ExtensionFor(format, false));
+		Safe::String privName(baseName);
+		privName += ExtensionFor(format, false);
+		const auto privPath = directory / std::filesystem::path(static_cast<std::string_view>(privName));
 		const Secure::Password privateKey = *m_private_key;
 		return WritePrivateFileEncrypted(privPath, privateKey, encryptPassword, format);
 	} catch (...) {
@@ -1284,18 +1346,27 @@ namespace StormByte::Crypto::KeyPair {
 		try {
 			const std::filesystem::path publicKeyPath{publicKeyPathView};
 			const std::filesystem::path privateKeyPath{privateKeyPathView};
-			std::optional<std::vector<CryptoPP::byte>> pubDer;
-			std::optional<std::vector<CryptoPP::byte>> privDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
 			bool privEncrypted = false;
+			WipeOnExit wipePrivate([&]() noexcept {
+				if (privDer)
+					SecureWipe(*privDer);
+			});
 			if (!publicKeyPath.empty() && std::filesystem::exists(publicKeyPath)) {
 				auto bytes = ReadFileBytes(publicKeyPath);
+				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 				if (bytes.empty())
 					return nullptr;
 				if (IsPemText(bytes)) {
 					auto blocks = PemDecodeAll(bytes);
+					WipeOnExit wipeBlocks([&]() noexcept {
+						for (auto& block : blocks)
+							SecureWipe(block.second);
+					});
 					for (auto& b : blocks) {
-						if (LabelIsPublic(b.label)) {
-							pubDer = std::move(b.der);
+						if (LabelIsPublic(b.first)) {
+							pubDer = std::move(b.second);
 							break;
 						}
 					}
@@ -1307,15 +1378,21 @@ namespace StormByte::Crypto::KeyPair {
 			}
 			if (!privateKeyPath.empty() && std::filesystem::exists(privateKeyPath)) {
 				auto bytes = ReadFileBytes(privateKeyPath);
+				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 				if (bytes.empty())
 					return nullptr;
 				if (IsPemText(bytes)) {
-					const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+					Safe::String text(bytes.begin(), bytes.end());
+					WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
 					auto blocks = PemDecodeAll(bytes);
+					WipeOnExit wipeBlocks([&]() noexcept {
+						for (auto& block : blocks)
+							SecureWipe(block.second);
+					});
 					for (auto& b : blocks) {
-						if (LabelIsPrivate(b.label)) {
-							privEncrypted = LabelIsEncrypted(b.label, text);
-							privDer = std::move(b.der);
+						if (LabelIsPrivate(b.first)) {
+							privEncrypted = LabelIsEncrypted(b.first, text);
+							privDer = std::move(b.second);
 							break;
 						}
 					}
@@ -1346,18 +1423,27 @@ namespace StormByte::Crypto::KeyPair {
 		try {
 			const std::filesystem::path publicKeyPath{publicKeyPathView};
 			const std::filesystem::path privateKeyPath{privateKeyPathView};
-			std::optional<std::vector<CryptoPP::byte>> pubDer;
-			std::optional<std::vector<CryptoPP::byte>> privDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
+			Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
 			bool privEncrypted = false;
+			WipeOnExit wipePrivate([&]() noexcept {
+				if (privDer)
+					SecureWipe(*privDer);
+			});
 			if (!publicKeyPath.empty() && std::filesystem::exists(publicKeyPath)) {
 				auto bytes = ReadFileBytes(publicKeyPath);
+				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 				if (bytes.empty())
 					return nullptr;
 				if (IsPemText(bytes)) {
 					auto blocks = PemDecodeAll(bytes);
+					WipeOnExit wipeBlocks([&]() noexcept {
+						for (auto& block : blocks)
+							SecureWipe(block.second);
+					});
 					for (auto& b : blocks) {
-						if (LabelIsPublic(b.label)) {
-							pubDer = std::move(b.der);
+						if (LabelIsPublic(b.first)) {
+							pubDer = std::move(b.second);
 							break;
 						}
 					}
@@ -1369,15 +1455,21 @@ namespace StormByte::Crypto::KeyPair {
 			}
 			if (!privateKeyPath.empty() && std::filesystem::exists(privateKeyPath)) {
 				auto bytes = ReadFileBytes(privateKeyPath);
+				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 				if (bytes.empty())
 					return nullptr;
 				if (IsPemText(bytes)) {
-					const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+					Safe::String text(bytes.begin(), bytes.end());
+					WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
 					auto blocks = PemDecodeAll(bytes);
+					WipeOnExit wipeBlocks([&]() noexcept {
+						for (auto& block : blocks)
+							SecureWipe(block.second);
+					});
 					for (auto& b : blocks) {
-						if (LabelIsPrivate(b.label)) {
-							privEncrypted = LabelIsEncrypted(b.label, text);
-							privDer = std::move(b.der);
+						if (LabelIsPrivate(b.first)) {
+							privEncrypted = LabelIsEncrypted(b.first, text);
+							privDer = std::move(b.second);
 							break;
 						}
 					}
@@ -1413,6 +1505,7 @@ namespace StormByte::Crypto::KeyPair {
 			if (std::filesystem::is_directory(path))
 				return nullptr;
 			auto bytes = ReadFileBytes(path);
+			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 			return LoadFromBytes(bytes, nullptr);
 		} catch (...) {
 			return nullptr;
@@ -1427,6 +1520,7 @@ namespace StormByte::Crypto::KeyPair {
 			if (std::filesystem::is_directory(path))
 				return nullptr;
 			auto bytes = ReadFileBytes(path);
+			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
 			return LoadFromBytes(bytes, &password);
 		} catch (...) {
 			return nullptr;

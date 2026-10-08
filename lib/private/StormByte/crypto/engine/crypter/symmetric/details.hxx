@@ -40,25 +40,32 @@
 
 #pragma once
 
-#include <StormByte/crypto/helpers/password_view.hxx>
 #include <StormByte/crypto/engine/crypter/details.hxx>
+#include <StormByte/crypto/helpers/password_view.hxx>
 #include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/typedefs.hxx>
-#include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/vector.hxx>
 
-#include <cstddef>
 #include <pwdbased.h>
 #include <secblock.h>
-#include <span>
+
+#include <cstddef>
+#include <cstdint>
 
 /**
+ * @namespace StormByte::Crypto::Engine::Crypter::Symmetric
  * @brief Private symmetric crypter implementation.
  */
 namespace StormByte::Crypto::Engine::Crypter::Symmetric {
 #ifdef STORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI
-	inline constexpr unsigned int kPbkdf2Iterations = 1000;		///< CI only
+	/**
+	 * @brief Reduced PBKDF2 work factor for explicitly insecure CI configurations.
+	 */
+	inline constexpr unsigned int Pbkdf2Iterations = 1000;
 #else
-	inline constexpr unsigned int kPbkdf2Iterations = 600000;	///< Production
+	/**
+	 * @brief Production PBKDF2 work factor.
+	 */
+	inline constexpr unsigned int Pbkdf2Iterations = 600000;
 #endif
 
 	/**
@@ -70,23 +77,22 @@ namespace StormByte::Crypto::Engine::Crypter::Symmetric {
 	 * @return Crypto++ DeriveKey result, or 0.
 	 */
 	template<class CryptoHMAC>
-	size_t DeriveKey(CryptoPP::SecByteBlock& key,
-					const CryptoPP::SecByteBlock& salt,
-					const Secure::Password& password) noexcept
-	{
+	std::size_t DeriveKey(Safe::Vector<unsigned char>& key,
+					const Safe::Vector<unsigned char>& salt,
+					const Secure::Password& password) noexcept {
 		try {
 			CryptoPP::PKCS5_PBKDF2_HMAC<CryptoHMAC> pbkdf2;
 			const unsigned char* pwdData = Helpers::PasswordAccess::Data(password);
 			const std::size_t pwdSize = Helpers::PasswordAccess::Size(password);
 			return pbkdf2.DeriveKey(
-				key,
-				key.size(),
+				key.data(),
+				static_cast<std::size_t>(key.size()),
 				0,
-				pwdData ? pwdData : reinterpret_cast<const uint8_t*>(""),
+				pwdData ? pwdData : reinterpret_cast<const std::uint8_t*>(""),
 				pwdSize,
-				salt,
-				salt.size(),
-				kPbkdf2Iterations
+				salt.data(),
+				static_cast<std::size_t>(salt.size()),
+				Pbkdf2Iterations
 			);
 		} catch (...) {
 			return 0;
@@ -94,37 +100,23 @@ namespace StormByte::Crypto::Engine::Crypter::Symmetric {
 	}
 
 	/**
-	 * @brief SetKeyWithIV when the type has it.
-	 */
-	template<typename CryptorT>
-	auto SetKeyIVImpl(CryptorT& c,
-					const CryptoPP::SecByteBlock& key, size_t keylen,
-					const CryptoPP::SecByteBlock& iv, size_t ivlen, int)
-		-> decltype(c.SetKeyWithIV(key, keylen, iv, ivlen), void())
-	{
-		c.SetKeyWithIV(key, keylen, iv, ivlen);
-	}
-
-	/**
-	 * @brief Fallback: SetKeyWithoutResync + Resync.
-	 */
-	template<typename CryptorT>
-	void SetKeyIVImpl(CryptorT& c,
-					const CryptoPP::SecByteBlock& key, size_t keylen,
-					const CryptoPP::SecByteBlock& iv, size_t ivlen, long)
-	{
-		c.SetKeyWithoutResync(key.data(), keylen, CryptoPP::g_nullNameValuePairs);
-		c.Resync(iv.data(), static_cast<int>(ivlen));
-	}
-
-	/**
 	 * @brief Set key and IV on a Crypto++ cipher.
+	 * @tparam CryptorT Crypto++ cipher type.
+	 * @param cryptor Cipher to initialize.
+	 * @param key Derived key.
+	 * @param keylen Key length in bytes.
+	 * @param iv Initialization vector.
+	 * @param ivlen Initialization vector length in bytes.
 	 */
 	template<typename CryptorT>
-	void SetKeyIV(CryptorT& c,
-				const CryptoPP::SecByteBlock& key, size_t keylen,
-				const CryptoPP::SecByteBlock& iv, size_t ivlen)
-	{
-		SetKeyIVImpl(c, key, keylen, iv, ivlen, 0);
+	void SetKeyIV(CryptorT& cryptor,
+				const Safe::Vector<unsigned char>& key, std::size_t keylen,
+				const Safe::Vector<unsigned char>& iv, std::size_t ivlen) {
+		if constexpr (requires { cryptor.SetKeyWithIV(key.data(), keylen, iv.data(), ivlen); })
+			cryptor.SetKeyWithIV(key.data(), keylen, iv.data(), ivlen);
+		else {
+			cryptor.SetKeyWithoutResync(key.data(), keylen, CryptoPP::g_nullNameValuePairs);
+			cryptor.Resync(iv.data(), static_cast<int>(ivlen));
+		}
 	}
 }

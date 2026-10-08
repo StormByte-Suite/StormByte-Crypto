@@ -45,28 +45,104 @@
 #include <StormByte/crypto/hasher/blake2b.hxx>
 #include <StormByte/test_handlers.h>
 
+#include <utility>
+
 using StormByte::Buffer::FIFO;
 using namespace StormByte::Crypto;
 
 namespace {
-	const std::string kExpectedHashThisString =
+	const StormByte::Safe::String ExpectedHashThisString =
 		"66CCD3A78741E16F894F2FB20045A8678D12B73D9CBA95D3473B1029781D6587"
 		"648E839960BDA14F0FF075C0EC9E7ED1AA13197BEED8B027EEA32800453CC7F8";
+}
+
+// -------------------
+// Assignment
+// -------------------
+
+int test_blake2b_copy_assignment() {
+	const Hasher::Blake2b source;
+	Hasher::Blake2b assigned;
+	ASSERT_TRUE(&(assigned = source) == &assigned);
+	ASSERT_EQUAL(Hasher::Type::Blake2b, assigned.Type());
+	FIFO hash;
+	ASSERT_TRUE(assigned.Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	ASSERT_EQUAL(Hasher::Type::Blake2b, source.Type());
+	RETURN_TEST(0);
+}
+
+int test_blake2b_move_assignment() {
+	Hasher::Blake2b source;
+	Hasher::Blake2b assigned;
+	ASSERT_TRUE(&(assigned = std::move(source)) == &assigned);
+	ASSERT_EQUAL(Hasher::Type::Blake2b, assigned.Type());
+	FIFO hash;
+	ASSERT_TRUE(assigned.Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Construct
+// -------------------
+
+int test_blake2b_copy_constructor() {
+	const Hasher::Blake2b source;
+	Hasher::Blake2b copied(source);
+	ASSERT_EQUAL(Hasher::Type::Blake2b, copied.Type());
+	FIFO hash;
+	ASSERT_TRUE(copied.Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	ASSERT_EQUAL(Hasher::Type::Blake2b, source.Type());
+	RETURN_TEST(0);
+}
+
+int test_blake2b_move_constructor() {
+	Hasher::Blake2b source;
+	Hasher::Blake2b moved(std::move(source));
+	ASSERT_EQUAL(Hasher::Type::Blake2b, moved.Type());
+	FIFO hash;
+	ASSERT_TRUE(moved.Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
 }
 
 // -------------------
 // Correctness
 // -------------------
 
-int test_blake2b_hash_correctness() {
-	const std::string fn_name = "test_blake2b_hash_correctness";
-	const std::string input_data = "HashThisString";
+int test_blake2b_embedded_nul() {
+	const StormByte::Safe::Binary input(std::string_view("a\0b", 3));
+	Hasher::Blake2b hasher;
+	FIFO hash;
+	ASSERT_EQUAL(std::size_t{3}, static_cast<std::size_t>(input.size()));
+	ASSERT_TRUE(hasher.Hash(input.span(), hash));
+	ASSERT_EQUAL(StormByte::Safe::String(
+		"07EEC4716391A892EA0225564EC9C0ED550C9272692DEDDB5BA1E375AA7756859"
+		"B00EBF25DE872ACADA3705F1343B13EFCCB59E5A1CBA077EF9D718D7056DF2D"), DeserializeString(hash.Data()));
+	RETURN_TEST(0);
+}
+
+int test_blake2b_empty_input() {
 	Hasher::Blake2b blake2b;
 	FIFO hash;
-	ASSERT_TRUE(fn_name, blake2b.Hash(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(input_data.data()), input_data.size()), hash));
-	ASSERT_EQUAL(fn_name, kExpectedHashThisString, DeserializeString(hash.Data()));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(blake2b.Hash(std::span<const std::byte>{}, hash));
+	ASSERT_EQUAL(StormByte::Safe::String(
+		"786A02F742015903C6C6FD852552D272912F4740E15847618A86E217F71F5419"
+		"D25E1031AFEE585313896444934EB04B903A685B1448B755D56F701AFE9BE2CE"),
+		DeserializeString(hash.Data()));
+	RETURN_TEST(0);
+}
+
+int test_blake2b_hash_correctness() {
+	const StormByte::Safe::String input_data = "HashThisString";
+	Hasher::Blake2b blake2b;
+	FIFO hash;
+	ASSERT_TRUE(blake2b.Hash(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(input_data.data()), static_cast<std::size_t>(input_data.size())), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
 }
 
 // -------------------
@@ -74,27 +150,55 @@ int test_blake2b_hash_correctness() {
 // -------------------
 
 int test_blake2b_collision_resistance() {
-	const std::string fn_name = "test_blake2b_collision_resistance";
 	Hasher::Blake2b blake2b;
 	FIFO hash_1_fifo;
-	ASSERT_TRUE(fn_name, blake2b.Hash(std::span<const std::byte>(
+	ASSERT_TRUE(blake2b.Hash(std::span<const std::byte>(
 		reinterpret_cast<const std::byte*>("Original Input Data"), 19), hash_1_fifo));
 	FIFO hash_2_fifo;
-	ASSERT_TRUE(fn_name, blake2b.Hash(std::span<const std::byte>(
+	ASSERT_TRUE(blake2b.Hash(std::span<const std::byte>(
 		reinterpret_cast<const std::byte*>("Original Input Data!"), 20), hash_2_fifo));
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(hash_1_fifo.Data()), DeserializeString(hash_2_fifo.Data()));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_NOT_EQUAL(DeserializeString(hash_1_fifo.Data()), DeserializeString(hash_2_fifo.Data()));
+	RETURN_TEST(0);
 }
 
 int test_blake2b_produces_different_content() {
-	const std::string fn_name = "test_blake2b_produces_different_content";
-	const std::string original_data = "Data to hash";
+	const StormByte::Safe::String original_data = "Data to hash";
 	Hasher::Blake2b blake2b;
 	FIFO hash;
-	ASSERT_TRUE(fn_name, blake2b.Hash(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), hash));
-	ASSERT_NOT_EQUAL(fn_name, original_data, DeserializeString(hash.Data()));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(blake2b.Hash(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(original_data.data()), static_cast<std::size_t>(original_data.size())), hash));
+	ASSERT_NOT_EQUAL(original_data, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Ownership
+// -------------------
+
+int test_blake2b_clone() {
+	const Hasher::Blake2b source;
+	auto cloned = source.Clone();
+	ASSERT_TRUE(cloned);
+	ASSERT_TRUE(dynamic_cast<Hasher::Blake2b*>(cloned.get()) != nullptr);
+	ASSERT_TRUE(cloned.get() != &source);
+	ASSERT_EQUAL(Hasher::Type::Blake2b, cloned->Type());
+	FIFO hash;
+	ASSERT_TRUE(cloned->Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
+}
+
+int test_blake2b_move() {
+	Hasher::Blake2b source;
+	auto moved = source.Move();
+	ASSERT_TRUE(moved);
+	ASSERT_TRUE(dynamic_cast<Hasher::Blake2b*>(moved.get()) != nullptr);
+	ASSERT_TRUE(moved.get() != &source);
+	ASSERT_EQUAL(Hasher::Type::Blake2b, moved->Type());
+	FIFO hash;
+	ASSERT_TRUE(moved->Hash(std::string_view("HashThisString"), hash));
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash.Data()));
+	RETURN_TEST(0);
 }
 
 // -------------------
@@ -102,25 +206,38 @@ int test_blake2b_produces_different_content() {
 // -------------------
 
 int test_blake2b_hash_using_consumer_producer() {
-	const std::string fn_name = "test_blake2b_hash_using_consumer_producer";
 	Hasher::Blake2b blake2b;
 	StormByte::Buffer::Producer producer;
-	producer.Write(std::string("HashThisString"));
+	ASSERT_TRUE(producer.Write(std::string_view("HashThisString")));
 	producer.Close();
 	auto hash_consumer = blake2b.Hash(producer.Consumer());
-	ASSERT_TRUE(fn_name, hash_consumer.IsWritable() || !hash_consumer.Empty());
+	ASSERT_TRUE(hash_consumer.IsWritable() || !hash_consumer.Empty());
 	auto hash_result = ReadAllFromConsumer(hash_consumer);
-	ASSERT_FALSE(fn_name, hash_result.Empty());
-	ASSERT_EQUAL(fn_name, kExpectedHashThisString, DeserializeString(hash_result));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_FALSE(hash_result.Empty());
+	ASSERT_EQUAL(ExpectedHashThisString, DeserializeString(hash_result));
+	RETURN_TEST(0);
 }
 
 int main() {
 	int result = 0;
 
 	// -------------------
+	// Assignment
+	// -------------------
+	result += test_blake2b_copy_assignment();
+	result += test_blake2b_move_assignment();
+
+	// -------------------
+	// Construct
+	// -------------------
+	result += test_blake2b_copy_constructor();
+	result += test_blake2b_move_constructor();
+
+	// -------------------
 	// Correctness
 	// -------------------
+	result += test_blake2b_embedded_nul();
+	result += test_blake2b_empty_input();
 	result += test_blake2b_hash_correctness();
 
 	// -------------------
@@ -128,6 +245,12 @@ int main() {
 	// -------------------
 	result += test_blake2b_collision_resistance();
 	result += test_blake2b_produces_different_content();
+
+	// -------------------
+	// Ownership
+	// -------------------
+	result += test_blake2b_clone();
+	result += test_blake2b_move();
 
 	// -------------------
 	// Stream

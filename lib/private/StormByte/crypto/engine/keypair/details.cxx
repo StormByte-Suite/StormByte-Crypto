@@ -39,26 +39,29 @@
  */
 
 #include <StormByte/crypto/engine/keypair/details.hxx>
+
 #include <base64.h>
-#include <filters.h>
+
 namespace StormByte::Crypto::Engine::KeyPair {
-	std::string EncodeSecBlockBase64(const CryptoPP::SecByteBlock& b) noexcept
-	{
-		std::string out;
-		CryptoPP::Base64Encoder enc(new CryptoPP::StringSink(out), false);
-		enc.Put(b.data(), b.size());
-		enc.MessageEnd();
-		return out;
+	Safe::String EncodeSecBlockBase64(const CryptoPP::SecByteBlock& block) {
+		CryptoPP::Base64Encoder encoder(nullptr, false);
+		encoder.Put(block.data(), block.size());
+		encoder.MessageEnd();
+		Safe::String output;
+		output.resize(encoder.MaxRetrievable());
+		if (!output.empty())
+			encoder.Get(reinterpret_cast<CryptoPP::byte*>(output.data()), output.size());
+		return output;
 	}
 
-	CryptoPP::SecByteBlock DecodeSecBlockBase64(const std::string& s) noexcept
-	{
-		CryptoPP::Base64Decoder dec;
-		CryptoPP::StringSource ss(s, true, new CryptoPP::Redirector(dec));
-		CryptoPP::SecByteBlock b;
-		b.resize(dec.MaxRetrievable());
-		if (b.size() > 0)
-			dec.Get(b.data(), b.size());
-		return b;
+	CryptoPP::SecByteBlock DecodeSecBlockBase64(std::string_view encoded) {
+		CryptoPP::Base64Decoder decoder;
+		decoder.Put(reinterpret_cast<const CryptoPP::byte*>(encoded.data()), encoded.size());
+		decoder.MessageEnd();
+		CryptoPP::SecByteBlock block;
+		block.resize(decoder.MaxRetrievable());
+		if (!block.empty())
+			decoder.Get(block.data(), block.size());
+		return block;
 	}
 }

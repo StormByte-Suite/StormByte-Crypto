@@ -38,36 +38,39 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#include <StormByte/crypto/engine/secret/details.hxx>
-#include <StormByte/crypto/secret/x25519.hxx>
+#pragma once
 
-using namespace StormByte::Crypto::Secret;
+#include <StormByte/type_traits.hxx>
 
-X25519::~X25519() noexcept = default;
-
-Generic::PointerType X25519::Clone() const {
-	return MakePointer<X25519>(*this);
+/**
+ * @namespace StormByte::Crypto::Engine::Crypter::Symmetric
+ * @brief Private symmetric crypter implementation.
+ */
+namespace StormByte::Crypto::Engine::Crypter::Symmetric {
+	/**
+	 * @class CipherOps
+	 * @brief Named symmetric engine allocated and destroyed in its creating module.
+	 * @tparam Cipher Crypto++ cipher type.
+	 * @tparam Hash PBKDF2 hash type.
+	 * @tparam Authenticated Whether the cipher uses authenticated filters.
+	 * @tparam Encrypting Whether the engine encrypts rather than decrypts.
+	 * @tparam Streaming Whether the filter spans multiple input chunks.
+	 */
+	template<class Cipher, class Hash, bool Authenticated, bool Encrypting, bool Streaming>
+	class CipherOps;
 }
 
-Generic::PointerType X25519::Move() {
-	return MakePointer<X25519>(std::move(*this));
-}
-
-StormByte::Safe::Optional<StormByte::Crypto::Secure::Password>
-X25519::Share(const StormByte::Safe::String& peerPublicKey) const {
-	if (!m_keypair || !m_keypair->HasPrivateKey())
-		return {};
-	return Engine::Secret::X25519Share(
-		*m_keypair->PrivateKey(),
-		peerPublicKey);
-}
-
-StormByte::Safe::Optional<StormByte::Crypto::Secure::Password>
-X25519::DeriveSharedSecret(KeyPair::Generic::PointerType keypair,
-	const StormByte::Safe::String& peerPublicKey) {
-	if (!keypair || !keypair->HasPrivateKey())
-		return {};
-	return Engine::Secret::X25519Share(
-		*keypair->PrivateKey(),
-		peerPublicKey);
-}
+/**
+ * @brief Certify only the named symmetric engine, not arbitrary Ops derivatives.
+ * @tparam Cipher Private Crypto++ cipher type.
+ * @tparam Hash Private PBKDF2 hash type.
+ * @tparam Authenticated Whether authentication is enabled.
+ * @tparam Encrypting Whether encryption is enabled.
+ * @tparam Streaming Whether input is streamed.
+ * @note The engine never leaves Crypto except behind a Safe owner that records
+ * its concrete creator-module destructor. Crypto++ state is strictly private;
+ * compatible C++ ABIs and loaded Crypto/Base modules are required throughout
+ * ownership. The engine is noncopyable and is never passed by value.
+ */
+template<class Cipher, class Hash, bool Authenticated, bool Encrypting, bool Streaming>
+struct StormByte::Type::IsMaybeSafe<StormByte::Crypto::Engine::Crypter::Symmetric::CipherOps<Cipher, Hash, Authenticated, Encrypting, Streaming>>: std::true_type {};

@@ -44,7 +44,8 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/expected.hxx>
-#include <StormByte/safe/pointers.hxx>
+#include <StormByte/safe/map.hxx>
+#include <StormByte/safe/string.hxx>
 #include <StormByte/size.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
@@ -79,9 +80,9 @@ namespace StormByte {
 			 * the last owner of each password and triggers the wipe.
 			 * @note MaybeSafe requires ABI-compatible toolchains and the Crypto and Base provider
 			 * modules to remain loaded while the vault or its ownership callbacks can be used.
-			 * Its only field is a Safe::Unique owner of opaque Storage. Storage's STL containers,
-			 * allocation and creator/deleter callbacks remain inside Crypto; construction, movement,
+			 * Named passwords are held directly in a Base-owned Safe::Map. Construction, movement,
 			 * assignment and destruction are exported. Stored Password values are Safe.
+			 * A moved-from vault is empty and can be reused.
 			 * This move-only type is not a SafeValue and is not admitted as a Safe collection value.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Vault {
@@ -123,7 +124,7 @@ namespace StormByte {
 					 * @param name Identifier.
 					 * @param password Password to share.
 					 */
-					void Store(std::string_view name, Password password) noexcept;
+					void Store(std::string_view name, Password password);
 
 					/**
 					 * @brief Look up a password.
@@ -131,20 +132,20 @@ namespace StormByte {
 					 * @return Password, or an error if the name is missing.
 					 * @note The returned Password shares the buffer.
 					 */
-					ExpectedPassword Get(std::string_view name) const noexcept;
+					ExpectedPassword Get(std::string_view name) const;
 
 					/**
 					 * @brief Whether a name exists.
 					 * @param name Identifier.
 					 * @return true if present.
 					 */
-					bool Contains(std::string_view name) const noexcept;
+					bool Contains(std::string_view name) const;
 
 					/**
 					 * @brief Drop one password.
 					 * @param name Identifier.
 					 */
-					void Remove(std::string_view name) noexcept;
+					void Remove(std::string_view name);
 
 					/**
 					 * @brief Drop every password.
@@ -164,9 +165,7 @@ namespace StormByte {
 					bool Empty() const noexcept;
 
 				private:
-					/** @brief Named-password storage constructed and destroyed inside Crypto. */
-					struct Storage;
-					StormByte::Safe::Unique<Storage> m_storage;	///< DLL-safe owner of named passwords
+					Safe::Map<Safe::String, Password> m_passwords;	///< Base-owned named passwords.
 			};
 		}
 	}

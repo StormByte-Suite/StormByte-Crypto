@@ -43,8 +43,6 @@
 #include <StormByte/crypto/engine/compressor/details.hxx>
 
 #include <algorithm>
-#include <filters.h>
-#include <memory>
 #include <zlib.h>
 
 using StormByte::Buffer::Consumer;
@@ -64,33 +62,29 @@ Generic::PointerType Zlib::Move() noexcept {
 
 namespace {
 	struct ZlibCompressOps final : StormByte::Crypto::Engine::Compressor::StreamOps {
-		StormByte::BinaryData buffer;
-		std::unique_ptr<CryptoPP::ZlibCompressor> compressor;
+		StormByte::Safe::Unique<CryptoPP::ZlibCompressor> compressor;
 
 		explicit ZlibCompressOps(unsigned short level) {
-			compressor = std::make_unique<CryptoPP::ZlibCompressor>(
-				new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(buffer),
-				level
-			);
+			compressor = StormByte::Safe::Unique<CryptoPP::ZlibCompressor>::MakePointer<CryptoPP::ZlibCompressor>(nullptr, level);
 		}
 
-		bool Process(std::span<const std::byte> in, StormByte::BinaryData& out) override {
+		bool Process(std::span<const std::byte> in, StormByte::Safe::Binary& out) override {
 			try {
-				compressor->Put(reinterpret_cast<const uint8_t*>(in.data()), in.size_bytes());
+				compressor->Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
 				compressor->Flush(true);
-				out = std::move(buffer);
-				buffer.clear();
+				out.resize(StormByte::ByteSize{compressor->MaxRetrievable()});
+				compressor->Get(reinterpret_cast<CryptoPP::byte*>(out.data()), out.span().size_bytes());
 				return true;
 			} catch (...) {
 				return false;
 			}
 		}
 
-		bool Finalize(StormByte::BinaryData& out) override {
+		bool Finalize(StormByte::Safe::Binary& out) override {
 			try {
 				compressor->MessageEnd();
-				out = std::move(buffer);
-				buffer.clear();
+				out.resize(StormByte::ByteSize{compressor->MaxRetrievable()});
+				compressor->Get(reinterpret_cast<CryptoPP::byte*>(out.data()), out.span().size_bytes());
 				compressor.reset();
 				return true;
 			} catch (...) {
@@ -100,32 +94,29 @@ namespace {
 	};
 
 	struct ZlibDecompressOps final : StormByte::Crypto::Engine::Compressor::StreamOps {
-		StormByte::BinaryData buffer;
-		std::unique_ptr<CryptoPP::ZlibDecompressor> decompressor;
+		StormByte::Safe::Unique<CryptoPP::ZlibDecompressor> decompressor;
 
 		ZlibDecompressOps() {
-			decompressor = std::make_unique<CryptoPP::ZlibDecompressor>(
-				new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(buffer)
-			);
+			decompressor = StormByte::Safe::Unique<CryptoPP::ZlibDecompressor>::MakePointer<CryptoPP::ZlibDecompressor>();
 		}
 
-		bool Process(std::span<const std::byte> in, StormByte::BinaryData& out) override {
+		bool Process(std::span<const std::byte> in, StormByte::Safe::Binary& out) override {
 			try {
-				decompressor->Put(reinterpret_cast<const uint8_t*>(in.data()), in.size_bytes());
+				decompressor->Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
 				decompressor->Flush(true);
-				out = std::move(buffer);
-				buffer.clear();
+				out.resize(StormByte::ByteSize{decompressor->MaxRetrievable()});
+				decompressor->Get(reinterpret_cast<CryptoPP::byte*>(out.data()), out.span().size_bytes());
 				return true;
 			} catch (...) {
 				return false;
 			}
 		}
 
-		bool Finalize(StormByte::BinaryData& out) override {
+		bool Finalize(StormByte::Safe::Binary& out) override {
 			try {
 				decompressor->MessageEnd();
-				out = std::move(buffer);
-				buffer.clear();
+				out.resize(StormByte::ByteSize{decompressor->MaxRetrievable()});
+				decompressor->Get(reinterpret_cast<CryptoPP::byte*>(out.data()), out.span().size_bytes());
 				decompressor.reset();
 				return true;
 			} catch (...) {
@@ -143,20 +134,20 @@ Zlib::Zlib(unsigned short level):
 
 bool Zlib::DoCompress(std::span<const std::byte> input, WriteOnly& output) const noexcept {
 	return Engine::Compressor::ProcessSpan(
-		input, output, std::make_unique<ZlibCompressOps>(m_level));
+		input, output, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<ZlibCompressOps>(m_level));
 }
 
 Consumer Zlib::DoCompress(Consumer consumer, ReadMode mode) const noexcept {
 	return Engine::Compressor::Stream(
-		std::move(consumer), mode, std::make_unique<ZlibCompressOps>(m_level));
+		std::move(consumer), mode, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<ZlibCompressOps>(m_level));
 }
 
 bool Zlib::DoDecompress(std::span<const std::byte> input, WriteOnly& output) const noexcept {
 	return Engine::Compressor::ProcessSpan(
-		input, output, std::make_unique<ZlibDecompressOps>());
+		input, output, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<ZlibDecompressOps>());
 }
 
 Consumer Zlib::DoDecompress(Consumer consumer, ReadMode mode) const noexcept {
 	return Engine::Compressor::Stream(
-		std::move(consumer), mode, std::make_unique<ZlibDecompressOps>());
+		std::move(consumer), mode, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<ZlibDecompressOps>());
 }

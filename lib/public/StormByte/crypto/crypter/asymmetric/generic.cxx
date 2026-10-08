@@ -43,6 +43,7 @@
 #include <StormByte/crypto/engine/crypter/asymmetric/api.hxx>
 #include <StormByte/crypto/keypair/ecc.hxx>
 #include <StormByte/crypto/keypair/rsa.hxx>
+#include <StormByte/safe/binary.hxx>
 
 #include <eccrypto.h>
 #include <rsa.h>
@@ -107,19 +108,19 @@ bool Asymmetric::Encrypt(std::span<const std::byte> input,
 bool Asymmetric::Encrypt(const ReadOnly& input,
 	WriteOnly& output,
 	Strategy strategy) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	if (!const_cast<ReadOnly&>(input).Read(StormByte::ByteSize{0}, data))
 		return false;
-	return Encrypt(std::span<const std::byte>(data.data(), data.size()), output, strategy);
+	return Encrypt(data.span(), output, strategy);
 }
 
 bool Asymmetric::Encrypt(ReadOnly& input,
 	WriteOnly& output,
 	Strategy strategy) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	if (!input.Extract(StormByte::ByteSize{0}, data))
 		return false;
-	return Encrypt(std::span<const std::byte>(data.data(), data.size()), output, strategy);
+	return Encrypt(data.span(), output, strategy);
 }
 
 Consumer Asymmetric::Encrypt(Consumer consumer,
@@ -166,30 +167,30 @@ bool Asymmetric::Decrypt(std::span<const std::byte> input,
 
 bool Asymmetric::Decrypt(const ReadOnly& input,
 	WriteOnly& output) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	if (!const_cast<ReadOnly&>(input).Read(StormByte::ByteSize{0}, data))
 		return false;
-	return Decrypt(std::span<const std::byte>(data.data(), data.size()), output);
+	return Decrypt(data.span(), output);
 }
 
 bool Asymmetric::Decrypt(ReadOnly& input,
 	WriteOnly& output) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	if (!input.Extract(StormByte::ByteSize{0}, data))
 		return false;
-	return Decrypt(std::span<const std::byte>(data.data(), data.size()), output);
+	return Decrypt(data.span(), output);
 }
 
 Consumer Asymmetric::Decrypt(Consumer consumer, ReadMode mode) const noexcept {
 	namespace Impl = Engine::Crypter::Asymmetric;
-	StormByte::BinaryData headerPeek;
-	if (!consumer.Peek(StormByte::ByteSize{4}, headerPeek) || headerPeek.size() < 4)
+	StormByte::Safe::Binary headerPeek;
+	if (!consumer.Peek(StormByte::ByteSize{4}, headerPeek) || headerPeek.size() < StormByte::ByteSize{4})
 		return DoDecrypt(std::move(consumer), mode);
 	const uint32_t possibleEskLen =
-		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[0])) << 24) |
-		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[1])) << 16) |
-		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[2])) << 8)  |
-		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[3])));
+		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[StormByte::ByteSize{0}])) << 24) |
+		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[StormByte::ByteSize{1}])) << 16) |
+		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[StormByte::ByteSize{2}])) << 8) |
+		(static_cast<uint32_t>(std::to_integer<unsigned char>(headerPeek[StormByte::ByteSize{3}])));
 	const bool looksLikeHybrid = (possibleEskLen >= 32 && possibleEskLen <= 512);
 	if (looksLikeHybrid) {
 		if (Type() == Type::RSA) {

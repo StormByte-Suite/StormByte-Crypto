@@ -40,6 +40,7 @@
 
 #include <StormByte/crypto/crypter/symmetric/twofish.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/api.hxx>
+#include <modes.h>
 #include <twofish.h>
 
 using namespace StormByte::Crypto::Crypter;

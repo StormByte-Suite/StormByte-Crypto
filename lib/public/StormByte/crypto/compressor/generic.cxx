@@ -49,7 +49,7 @@ using namespace StormByte::Crypto::Compressor;
 Generic::~Generic() noexcept = default;
 
 bool Generic::DoCompress(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -57,11 +57,11 @@ bool Generic::DoCompress(Buffer::ReadOnly& input, Buffer::WriteOnly& output, Rea
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoCompress(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoCompress(data.span(), output);
 }
 
 bool Generic::DoDecompress(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -69,7 +69,7 @@ bool Generic::DoDecompress(Buffer::ReadOnly& input, Buffer::WriteOnly& output, R
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoDecompress(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoDecompress(data.span(), output);
 }
 
 namespace StormByte::Crypto::Compressor {

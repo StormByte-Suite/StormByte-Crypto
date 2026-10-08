@@ -48,87 +48,145 @@
 using StormByte::Buffer::FIFO;
 using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
-
-// -------------------
-// Round trip
-// -------------------
-
-int test_camellia_encrypt_decrypt_consistency() {
-	const std::string fn_name = "test_camellia_encrypt_decrypt_consistency";
-	Password password("SecurePassword123!");
-	const std::string original_data = "Confidential information to encrypt and decrypt.";
-	Crypter::Camellia camellia(password);
-	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, camellia.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
-	FIFO decrypted_d;
-	ASSERT_TRUE(fn_name, camellia.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(encrypted_string.data()), encrypted_string.size()), decrypted_d));
-	ASSERT_EQUAL(fn_name, DeserializeString(decrypted_d.Data()), original_data);
-	RETURN_TEST(fn_name, 0);
-}
-
-int test_camellia_encryption_produces_different_content() {
-	const std::string fn_name = "test_camellia_encryption_produces_different_content";
-	Password password("SecurePassword123!");
-	const std::string original_data = "Important data to encrypt";
-	Crypter::Camellia camellia(password);
-	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, camellia.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
-	ASSERT_NOT_EQUAL(fn_name, encrypted_string, original_data);
-	RETURN_TEST(fn_name, 0);
-}
+using StormByte::Safe::Binary;
+using StormByte::Safe::String;
 
 // -------------------
 // Failure modes
 // -------------------
 
+int test_camellia_decryption_with_corrupted_data() {
+	Password password("StrongPassword123!");
+	const String original_data = "Important confidential data";
+	Crypter::Camellia camellia(password);
+	FIFO encrypted_data;
+	ASSERT_TRUE(camellia.Encrypt(std::as_bytes(std::span<const char>(original_data.data(),
+		static_cast<std::size_t>(original_data.size()))), encrypted_data));
+	Binary corrupted_data = encrypted_data.Data();
+	ASSERT_FALSE(corrupted_data.empty());
+	const auto count = static_cast<std::size_t>(corrupted_data.size());
+	if (count > 33) {
+		corrupted_data[StormByte::ByteSize{count - 1}] ^= std::byte{0xff};
+		corrupted_data[StormByte::ByteSize{count - 2}] ^= std::byte{0xff};
+	}
+	else
+		corrupted_data[StormByte::ByteSize{0}] ^= std::byte{0xff};
+	FIFO decrypted_data;
+	(void)camellia.Decrypt(static_cast<std::span<const std::byte>>(corrupted_data), decrypted_data);
+	ASSERT_NOT_EQUAL(DeserializeString(decrypted_data.Data()), original_data);
+	RETURN_TEST(0);
+}
+
+int test_camellia_empty_ciphertext() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	FIFO decrypted_data;
+	ASSERT_FALSE(camellia.Decrypt(std::span<const std::byte>{}, decrypted_data));
+	ASSERT_TRUE(decrypted_data.Empty());
+	RETURN_TEST(0);
+}
+
+int test_camellia_truncated_ciphertext() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	const Binary short_header(StormByte::ByteSize{1}, std::byte{0});
+	FIFO decrypted_data;
+	ASSERT_FALSE(camellia.Decrypt(static_cast<std::span<const std::byte>>(short_header), decrypted_data));
+	ASSERT_TRUE(decrypted_data.Empty());
+	const Binary original("A message with complete CBC blocks and padding.");
+	FIFO encrypted_data;
+	ASSERT_TRUE(camellia.Encrypt(static_cast<std::span<const std::byte>>(original), encrypted_data));
+	Binary truncated = encrypted_data.Data();
+	truncated.resize(truncated.size() - StormByte::ByteSize{1});
+	ASSERT_FALSE(camellia.Decrypt(static_cast<std::span<const std::byte>>(truncated), decrypted_data));
+	RETURN_TEST(0);
+}
+
 int test_camellia_wrong_decryption_password() {
-	const std::string fn_name = "test_camellia_wrong_decryption_password";
 	Password password("SecurePassword123!");
 	Password wrong_password("WrongPassword456!");
-	const std::string original_data = "This is sensitive data.";
+	const String original_data = "This is sensitive data.";
 	Crypter::Camellia camellia(password);
 	Crypter::Camellia camellia_wrong(wrong_password);
 	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, camellia.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
+	ASSERT_TRUE(camellia.Encrypt(std::as_bytes(std::span<const char>(original_data.data(),
+		static_cast<std::size_t>(original_data.size()))), encrypted_data));
+	const String encrypted_string = DeserializeString(encrypted_data.Data());
+	ASSERT_FALSE(encrypted_string.empty());
 	FIFO decrypted_d;
 	(void)camellia_wrong.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(encrypted_string.data()), encrypted_string.size()), decrypted_d);
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(decrypted_d.Data()), original_data);
-	RETURN_TEST(fn_name, 0);
+		reinterpret_cast<const std::byte*>(encrypted_string.data()), static_cast<std::size_t>(encrypted_string.size())), decrypted_d);
+	ASSERT_NOT_EQUAL(DeserializeString(decrypted_d.Data()), original_data);
+	RETURN_TEST(0);
 }
 
-int test_camellia_decryption_with_corrupted_data() {
-	const std::string fn_name = "test_camellia_decryption_with_corrupted_data";
-	Password password("StrongPassword123!");
-	const std::string original_data = "Important confidential data";
+// -------------------
+// Reuse
+// -------------------
+
+int test_camellia_reuse_after_failure() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	FIFO rejected;
+	ASSERT_FALSE(camellia.Decrypt(std::span<const std::byte>{}, rejected));
+	const Binary original("Repeated calls must use independent cipher state.");
+	Binary previous;
+	for (int attempt = 0; attempt < 2; ++attempt) {
+		FIFO encrypted_data;
+		ASSERT_TRUE(camellia.Encrypt(static_cast<std::span<const std::byte>>(original), encrypted_data));
+		const Binary ciphertext = encrypted_data.Data();
+		ASSERT_NOT_EQUAL(previous, ciphertext);
+		FIFO decrypted_data;
+		ASSERT_TRUE(camellia.Decrypt(static_cast<std::span<const std::byte>>(ciphertext), decrypted_data));
+		ASSERT_EQUAL(original, decrypted_data.Data());
+		previous = ciphertext;
+	}
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Round trip
+// -------------------
+
+int test_camellia_empty_plaintext() {
+	Password password("SecurePassword123!");
 	Crypter::Camellia camellia(password);
 	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, camellia.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	std::string corrupted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, corrupted_string.empty());
-	const size_t salt_iv_size = 32;
-	if (corrupted_string.size() > salt_iv_size + 1) {
-		corrupted_string[corrupted_string.size() - 1] = static_cast<char>(~corrupted_string[corrupted_string.size() - 1]);
-		corrupted_string[corrupted_string.size() - 2] = static_cast<char>(~corrupted_string[corrupted_string.size() - 2]);
-	} else {
-		corrupted_string[0] = static_cast<char>(~corrupted_string[0]);
-	}
-	FIFO corrupted_data;
-	(void)camellia.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(corrupted_string.data()), corrupted_string.size()), corrupted_data);
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(corrupted_data.Data()), original_data);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(camellia.Encrypt(std::span<const std::byte>{}, encrypted_data));
+	ASSERT_FALSE(encrypted_data.Empty());
+	FIFO decrypted_data;
+	ASSERT_TRUE(camellia.Decrypt(static_cast<std::span<const std::byte>>(encrypted_data.Data()), decrypted_data));
+	ASSERT_TRUE(decrypted_data.Empty());
+	RETURN_TEST(0);
+}
+
+int test_camellia_encrypt_decrypt_consistency() {
+	Password password("SecurePassword123!");
+	const String original_data = "Confidential information to encrypt and decrypt.";
+	Crypter::Camellia camellia(password);
+	FIFO encrypted_data;
+	ASSERT_TRUE(camellia.Encrypt(std::as_bytes(std::span<const char>(original_data.data(),
+		static_cast<std::size_t>(original_data.size()))), encrypted_data));
+	const String encrypted_string = DeserializeString(encrypted_data.Data());
+	ASSERT_FALSE(encrypted_string.empty());
+	FIFO decrypted_d;
+	ASSERT_TRUE(camellia.Decrypt(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(encrypted_string.data()), static_cast<std::size_t>(encrypted_string.size())), decrypted_d));
+	ASSERT_EQUAL(DeserializeString(decrypted_d.Data()), original_data);
+	RETURN_TEST(0);
+}
+
+int test_camellia_encryption_produces_different_content() {
+	Password password("SecurePassword123!");
+	const String original_data = "Important data to encrypt";
+	Crypter::Camellia camellia(password);
+	FIFO encrypted_data;
+	ASSERT_TRUE(camellia.Encrypt(std::as_bytes(std::span<const char>(original_data.data(),
+		static_cast<std::size_t>(original_data.size()))), encrypted_data));
+	const String encrypted_string = DeserializeString(encrypted_data.Data());
+	ASSERT_FALSE(encrypted_string.empty());
+	ASSERT_NOT_EQUAL(encrypted_string, original_data);
+	RETURN_TEST(0);
 }
 
 // -------------------
@@ -136,40 +194,94 @@ int test_camellia_decryption_with_corrupted_data() {
 // -------------------
 
 int test_camellia_encrypt_decrypt_using_consumer_producer() {
-	const std::string fn_name = "test_camellia_encrypt_decrypt_using_consumer_producer";
-	const std::string input_data = "This is some data to encrypt using the Consumer/Producer model.";
+	const String input_data = "This is some data to encrypt using the Consumer/Producer model.";
 	Password password("SecurePassword123!");
 	Crypter::Camellia camellia(password);
 	StormByte::Buffer::Producer producer;
-	producer.Write(input_data);
+	ASSERT_TRUE(producer.Write(static_cast<std::string_view>(input_data)));
 	producer.Close();
 	auto encrypted_consumer = camellia.Encrypt(producer.Consumer());
-	ASSERT_TRUE(fn_name, encrypted_consumer.IsWritable() || !encrypted_consumer.Empty());
+	ASSERT_TRUE(encrypted_consumer.IsWritable() || !encrypted_consumer.Empty());
 	auto decrypted_consumer = camellia.Decrypt(encrypted_consumer);
-	ASSERT_TRUE(fn_name, decrypted_consumer.IsWritable() || !decrypted_consumer.Empty());
-	ASSERT_EQUAL(fn_name, input_data, DeserializeString(ReadAllFromConsumer(decrypted_consumer)));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(decrypted_consumer.IsWritable() || !decrypted_consumer.Empty());
+	ASSERT_EQUAL(input_data, DeserializeString(ReadAllFromConsumer(decrypted_consumer)));
+	RETURN_TEST(0);
+}
+
+int test_camellia_stream_binary_chunks() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	Binary input(StormByte::ByteSize{8193}, std::byte{0x80});
+	input[StormByte::ByteSize{0}] = std::byte{0};
+	input[StormByte::ByteSize{4096}] = std::byte{0xff};
+	const auto bytes = static_cast<std::span<const std::byte>>(input);
+	StormByte::Buffer::Producer producer;
+	ASSERT_TRUE(producer.Write(bytes.first(1)));
+	ASSERT_TRUE(producer.Write(bytes.subspan(1, 4095)));
+	ASSERT_TRUE(producer.Write(bytes.subspan(4096)));
+	producer.Close();
+	auto decrypted = camellia.Decrypt(camellia.Encrypt(producer.Consumer()));
+	const FIFO output = ReadAllFromConsumer(decrypted);
+	ASSERT_EQUAL(input, output.Data());
+	RETURN_TEST(0);
+}
+
+int test_camellia_stream_empty_plaintext() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	StormByte::Buffer::Producer producer;
+	producer.Close();
+	const FIFO encrypted = ReadAllFromConsumer(camellia.Encrypt(producer.Consumer()));
+	ASSERT_FALSE(encrypted.Empty());
+	StormByte::Buffer::Producer ciphertext;
+	ASSERT_TRUE(ciphertext.Write(encrypted.Data()));
+	ciphertext.Close();
+	const FIFO decrypted = ReadAllFromConsumer(camellia.Decrypt(ciphertext.Consumer()));
+	ASSERT_TRUE(decrypted.Empty());
+	RETURN_TEST(0);
+}
+
+int test_camellia_stream_truncated_header() {
+	Password password("SecurePassword123!");
+	Crypter::Camellia camellia(password);
+	StormByte::Buffer::Producer producer;
+	ASSERT_TRUE(producer.Write(Binary{std::byte{0}}));
+	producer.Close();
+	const FIFO decrypted = ReadAllFromConsumer(camellia.Decrypt(producer.Consumer()));
+	ASSERT_TRUE(decrypted.Empty());
+	RETURN_TEST(0);
 }
 
 int main() {
 	int result = 0;
 
 	// -------------------
-	// Round trip
-	// -------------------
-	result += test_camellia_encrypt_decrypt_consistency();
-	result += test_camellia_encryption_produces_different_content();
-
-	// -------------------
 	// Failure modes
 	// -------------------
-	result += test_camellia_wrong_decryption_password();
 	result += test_camellia_decryption_with_corrupted_data();
+	result += test_camellia_empty_ciphertext();
+	result += test_camellia_truncated_ciphertext();
+	result += test_camellia_wrong_decryption_password();
+
+	// -------------------
+	// Reuse
+	// -------------------
+	result += test_camellia_reuse_after_failure();
+
+	// -------------------
+	// Round trip
+	// -------------------
+	result += test_camellia_empty_plaintext();
+	result += test_camellia_encrypt_decrypt_consistency();
+	result += test_camellia_encryption_produces_different_content();
 
 	// -------------------
 	// Stream
 	// -------------------
 	result += test_camellia_encrypt_decrypt_using_consumer_producer();
+	result += test_camellia_stream_binary_chunks();
+	result += test_camellia_stream_empty_plaintext();
+	result += test_camellia_stream_truncated_header();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

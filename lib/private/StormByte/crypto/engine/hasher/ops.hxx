@@ -40,40 +40,75 @@
 
 #pragma once
 
-#include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/visibility.h>
-#include <StormByte/safe/string.hxx>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/type_traits/safe.hxx>
 
-#include <secblock.h>
-#include <string_view>
+#include <span>
 
 /**
- * @namespace StormByte::Crypto::Engine::KeyPair
- * @brief Private keypair implementation.
+ * @namespace StormByte::Crypto::Engine::Hasher
+ * @brief Private hasher implementation.
  */
-namespace StormByte::Crypto::Engine::KeyPair {
+namespace StormByte::Crypto::Engine::Hasher {
 	/**
-	 * @brief Encode a SecByteBlock as Base64.
-	 * @param block Source.
-	 * @return Base64 string.
+	 * @struct Ops
+	 * @brief Chunk-oriented hash engine whose concrete lifetime stays in Crypto.
 	 */
-	Safe::String EncodeSecBlockBase64(const CryptoPP::SecByteBlock& block);
+	struct Ops {
+		/**
+		 * @brief Construct an engine interface.
+		 */
+		Ops() = default;
 
-	/**
-	 * @brief Decode Base64 into a SecByteBlock.
-	 * @param encoded Base64.
-	 * @return Decoded block.
-	 */
-	CryptoPP::SecByteBlock DecodeSecBlockBase64(std::string_view encoded);
+		/**
+		 * @brief Engine interfaces cannot be copied.
+		 * @param other Source interface.
+		 */
+		Ops(const Ops&) = delete;
 
-	/**
-	 * @brief Wrap raw key bytes into a Password and wipe the source.
-	 * @param block Source block (wiped).
-	 * @return Password.
-	 */
-	inline Secure::Password PasswordFromSecBlock(CryptoPP::SecByteBlock& block) {
-		Secure::Password result(block.data(), StormByte::ByteSize{block.size()});
-		CryptoPP::SecureWipeBuffer(block.data(), block.size());
-		return result;
-	}
+		/**
+		 * @brief Engine interfaces cannot be moved.
+		 * @param other Source interface.
+		 */
+		Ops(Ops&&) = delete;
+
+		/**
+		 * @brief Destroy the concrete engine in Crypto.
+		 */
+		virtual ~Ops() = default;
+
+		/**
+		 * @brief Engine interfaces cannot be copy-assigned.
+		 * @param other Source interface.
+		 * @return This interface.
+		 */
+		Ops& operator=(const Ops&) = delete;
+
+		/**
+		 * @brief Engine interfaces cannot be move-assigned.
+		 * @param other Source interface.
+		 * @return This interface.
+		 */
+		Ops& operator=(Ops&&) = delete;
+
+		/**
+		 * @brief Feed one borrowed chunk synchronously.
+		 * @param input Input bytes, not retained.
+		 */
+		virtual void Update(std::span<const std::byte> input) = 0;
+
+		/**
+		 * @brief Finish and write the hexadecimal digest.
+		 * @param output Base-owned destination.
+		 * @return Whether finalization succeeded.
+		 */
+		virtual bool Finalize(Safe::Binary& output) = 0;
+	};
 }
+
+/**
+ * @brief Register only the private engine interface, not arbitrary derivatives.
+ * @note Concrete destruction is retained by the Crypto-created Safe owner.
+ *       The provider module must remain loaded for the owner's lifetime.
+ */
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Engine::Hasher::Ops);

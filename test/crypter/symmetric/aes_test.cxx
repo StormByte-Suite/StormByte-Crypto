@@ -50,109 +50,158 @@ using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
 
 // -------------------
-// Round trip
+// Empty
 // -------------------
 
-int test_aes_encrypt_decrypt_consistency() {
-	const std::string fn_name = "test_aes_encrypt_decrypt_consistency";
-	Password password("SecurePassword123!");
-	const std::string original_data = "Confidential information to encrypt and decrypt.";
-	Crypter::AES aes(password);
-	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, aes.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
-	FIFO decrypted_d;
-	ASSERT_TRUE(fn_name, aes.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(encrypted_string.data()), encrypted_string.size()), decrypted_d));
-	ASSERT_EQUAL(fn_name, original_data, DeserializeString(decrypted_d.Data()));
-	RETURN_TEST(fn_name, 0);
-}
-
-int test_aes_encryption_produces_different_content() {
-	const std::string fn_name = "test_aes_encryption_produces_different_content";
-	Password password("SecurePassword123!");
-	const std::string original_data = "Important data to encrypt";
-	Crypter::AES aes(password);
-	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, aes.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
-	ASSERT_NOT_EQUAL(fn_name, encrypted_string, original_data);
-	RETURN_TEST(fn_name, 0);
+int test_aes_empty_round_trip() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	FIFO encrypted;
+	ASSERT_TRUE(aes.Encrypt(StormByte::Safe::Binary{}.span(), encrypted));
+	FIFO decrypted;
+	ASSERT_TRUE(aes.Decrypt(encrypted.Data().span(), decrypted));
+	ASSERT_TRUE(decrypted.Empty());
+	RETURN_TEST(0);
 }
 
 // -------------------
 // Failure modes
 // -------------------
 
-int test_aes_wrong_decryption_password() {
-	const std::string fn_name = "test_aes_wrong_decryption_password";
-	Password password("SecurePassword123!");
-	Password wrong_password("WrongPassword456!");
-	const std::string original_data = "This is sensitive data.";
+int test_aes_decryption_with_corrupted_data() {
+	Password password("StrongPassword123!");
+	const StormByte::Safe::Binary original_data("Important confidential data");
 	Crypter::AES aes(password);
-	Crypter::AES aes_wrong(wrong_password);
 	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, aes.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	const std::string encrypted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, encrypted_string.empty());
-	FIFO decrypted_d;
-	(void)aes_wrong.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(encrypted_string.data()), encrypted_string.size()), decrypted_d);
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(decrypted_d.Data()), original_data);
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(aes.Encrypt(original_data.span(), encrypted_data));
+	auto corrupted = encrypted_data.Data();
+	ASSERT_FALSE(corrupted.empty());
+	if (static_cast<std::size_t>(corrupted.size()) > 33) {
+		corrupted.back() = ~corrupted.back();
+		corrupted[StormByte::ByteSize{static_cast<std::size_t>(corrupted.size()) - 2}] =
+			~corrupted[StormByte::ByteSize{static_cast<std::size_t>(corrupted.size()) - 2}];
+	}
+	else
+		corrupted.front() = ~corrupted.front();
+	FIFO corrupted_data;
+	(void)aes.Decrypt(corrupted.span(), corrupted_data);
+	ASSERT_NOT_EQUAL(original_data, corrupted_data.Data());
+	RETURN_TEST(0);
 }
 
-int test_aes_decryption_with_corrupted_data() {
-	const std::string fn_name = "test_aes_decryption_with_corrupted_data";
-	Password password("StrongPassword123!");
-	const std::string original_data = "Important confidential data";
-	Crypter::AES aes(password);
+int test_aes_truncated_ciphertext() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	FIFO decrypted;
+	ASSERT_FALSE(aes.Decrypt(StormByte::Safe::Binary("short").span(), decrypted));
+	ASSERT_TRUE(decrypted.Empty());
+	RETURN_TEST(0);
+}
+
+int test_aes_wrong_decryption_password() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	Crypter::AES aes_wrong(Password("WrongPassword456!"));
+	const StormByte::Safe::Binary original_data("This is sensitive data.");
 	FIFO encrypted_data;
-	ASSERT_TRUE(fn_name, aes.Encrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(original_data.data()), original_data.size()), encrypted_data));
-	std::string corrupted_string = DeserializeString(encrypted_data.Data());
-	ASSERT_FALSE(fn_name, corrupted_string.empty());
-	const size_t salt_iv_size = 32;
-	if (corrupted_string.size() > salt_iv_size + 1) {
-		corrupted_string[corrupted_string.size() - 1] = static_cast<char>(~corrupted_string[corrupted_string.size() - 1]);
-		corrupted_string[corrupted_string.size() - 2] = static_cast<char>(~corrupted_string[corrupted_string.size() - 2]);
-	} else {
-		corrupted_string[0] = static_cast<char>(~corrupted_string[0]);
+	ASSERT_TRUE(aes.Encrypt(original_data.span(), encrypted_data));
+	ASSERT_FALSE(encrypted_data.Empty());
+	FIFO decrypted;
+	(void)aes_wrong.Decrypt(encrypted_data.Data().span(), decrypted);
+	ASSERT_NOT_EQUAL(original_data, decrypted.Data());
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Reuse
+// -------------------
+
+int test_aes_reuse_after_failure() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	FIFO rejected;
+	ASSERT_FALSE(aes.Decrypt(StormByte::Safe::Binary{}.span(), rejected));
+	const StormByte::Safe::Binary input("valid after failure");
+	for (int iteration = 0; iteration < 2; ++iteration) {
+		FIFO encrypted;
+		ASSERT_TRUE(aes.Encrypt(input.span(), encrypted));
+		FIFO decrypted;
+		ASSERT_TRUE(aes.Decrypt(encrypted.Data().span(), decrypted));
+		ASSERT_EQUAL(input, decrypted.Data());
 	}
-	FIFO corrupted_data;
-	(void)aes.Decrypt(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(corrupted_string.data()), corrupted_string.size()), corrupted_data);
-	ASSERT_NOT_EQUAL(fn_name, DeserializeString(corrupted_data.Data()), original_data);
-	RETURN_TEST(fn_name, 0);
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Round trip
+// -------------------
+
+int test_aes_encrypt_decrypt_consistency() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	const StormByte::Safe::Binary original_data("Confidential information to encrypt and decrypt.");
+	FIFO encrypted;
+	ASSERT_TRUE(aes.Encrypt(original_data.span(), encrypted));
+	ASSERT_FALSE(encrypted.Empty());
+	FIFO decrypted;
+	ASSERT_TRUE(aes.Decrypt(encrypted.Data().span(), decrypted));
+	ASSERT_EQUAL(original_data, decrypted.Data());
+	RETURN_TEST(0);
+}
+
+int test_aes_encryption_produces_different_content() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	const StormByte::Safe::Binary original_data("Important data to encrypt");
+	FIFO encrypted;
+	ASSERT_TRUE(aes.Encrypt(original_data.span(), encrypted));
+	ASSERT_FALSE(encrypted.Empty());
+	ASSERT_NOT_EQUAL(original_data, encrypted.Data());
+	RETURN_TEST(0);
 }
 
 // -------------------
 // Stream
 // -------------------
 
+int test_aes_empty_stream() {
+	Crypter::AES aes(Password("SecurePassword123!"));
+	StormByte::Buffer::Producer producer;
+	producer.Close();
+	auto encrypted = aes.Encrypt(producer.Consumer());
+	auto decrypted = aes.Decrypt(encrypted);
+	ASSERT_TRUE(ReadAllFromConsumer(decrypted).Empty());
+	RETURN_TEST(0);
+}
+
 int test_aes_encrypt_decrypt_using_consumer_producer() {
-	const std::string fn_name = "test_aes_encrypt_decrypt_using_consumer_producer";
-	const std::string input_data = "This is some data to encrypt using the Consumer/Producer model.";
+	const StormByte::Safe::String input_data = "This is some data to encrypt using the Consumer/Producer model.";
 	Password password("SecurePassword123!");
 	Crypter::AES aes(password);
 	StormByte::Buffer::Producer producer;
-	producer.Write(input_data);
+	producer.Write(static_cast<std::string_view>(input_data));
 	producer.Close();
 	auto encrypted_consumer = aes.Encrypt(producer.Consumer());
-	ASSERT_TRUE(fn_name, encrypted_consumer.IsWritable() || !encrypted_consumer.Empty());
+	ASSERT_TRUE(encrypted_consumer.IsWritable() || !encrypted_consumer.Empty());
 	auto decrypted_consumer = aes.Decrypt(encrypted_consumer);
-	ASSERT_TRUE(fn_name, decrypted_consumer.IsWritable() || !decrypted_consumer.Empty());
-	ASSERT_EQUAL(fn_name, input_data, DeserializeString(ReadAllFromConsumer(decrypted_consumer)));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(decrypted_consumer.IsWritable() || !decrypted_consumer.Empty());
+	ASSERT_EQUAL(input_data, DeserializeString(ReadAllFromConsumer(decrypted_consumer)));
+	RETURN_TEST(0);
 }
 
 int main() {
 	int result = 0;
+
+	// -------------------
+	// Empty
+	// -------------------
+	result += test_aes_empty_round_trip();
+
+	// -------------------
+	// Failure modes
+	// -------------------
+	result += test_aes_decryption_with_corrupted_data();
+	result += test_aes_truncated_ciphertext();
+	result += test_aes_wrong_decryption_password();
+
+	// -------------------
+	// Reuse
+	// -------------------
+	result += test_aes_reuse_after_failure();
 
 	// -------------------
 	// Round trip
@@ -161,14 +210,9 @@ int main() {
 	result += test_aes_encryption_produces_different_content();
 
 	// -------------------
-	// Failure modes
-	// -------------------
-	result += test_aes_wrong_decryption_password();
-	result += test_aes_decryption_with_corrupted_data();
-
-	// -------------------
 	// Stream
 	// -------------------
+	result += test_aes_empty_stream();
 	result += test_aes_encrypt_decrypt_using_consumer_producer();
 
 	if (result == 0)

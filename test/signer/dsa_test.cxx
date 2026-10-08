@@ -42,63 +42,212 @@
 
 #include <StormByte/buffer/fifo.hxx>
 #include <StormByte/crypto/signer/dsa.hxx>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/string.hxx>
 #include <StormByte/test_handlers.h>
 
+#include <array>
 #include <iostream>
+#include <string_view>
+#include <utility>
 
 using StormByte::Buffer::FIFO;
+using namespace StormByte;
 using namespace StormByte::Crypto;
 
 // -------------------
-// Sign / verify
+// Class surface
 // -------------------
 
-int test_dsa_sign_and_verify(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_dsa_sign_and_verify";
-	const std::string message = "This is a test message.";
-	Signer::DSA dsa(kp);
-	FIFO signed_data;
-	ASSERT_TRUE(fn_name, dsa.Sign(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signed_data));
-	const std::string signature = DeserializeString(signed_data.Data());
-	ASSERT_TRUE(fn_name, dsa.Verify(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signature));
-	RETURN_TEST(fn_name, 0);
+int test_dsa_copy_move_and_clone(KeyPair::Generic::PointerType kp) {
+	Signer::DSA original(kp);
+	Signer::DSA copied(original);
+	Signer::DSA copy_assigned(kp);
+	copy_assigned = original;
+	Signer::DSA moved(std::move(copied));
+	Signer::DSA move_assigned(kp);
+	move_assigned = std::move(copy_assigned);
+	auto cloned = original.Clone();
+	ASSERT_TRUE(static_cast<bool>(cloned));
+	ASSERT_NOT_EQUAL(&original, cloned.get());
+	Signer::DSA move_source(original);
+	auto relocated = move_source.Move();
+	ASSERT_TRUE(static_cast<bool>(relocated));
+	const Safe::Binary message("Class surface message");
+	const std::array<const Signer::Generic*, 5> signers {
+		&original, &moved, &move_assigned, cloned.get(), relocated.get()
+	};
+	for (const auto* signer: signers) {
+		ASSERT_TRUE(static_cast<bool>(signer->KeyPair()));
+		ASSERT_EQUAL(kp->PublicKey(), signer->KeyPair()->PublicKey());
+		FIFO signed_data;
+		ASSERT_TRUE(signer->Sign(message.span(), signed_data));
+		const Safe::String signature = DeserializeString(signed_data.Data());
+		ASSERT_FALSE(signature.empty());
+		ASSERT_TRUE(original.Verify(message.span(), static_cast<std::string_view>(signature)));
+		ASSERT_TRUE(signer->Verify(message.span(), static_cast<std::string_view>(signature)));
+	}
+	RETURN_TEST(0);
 }
 
 // -------------------
 // Failure modes
 // -------------------
 
+int test_dsa_sign_with_public_only_key(KeyPair::Generic::PointerType kp) {
+	const KeyPair::DSA public_key(static_cast<std::string_view>(kp->PublicKey()));
+	ASSERT_FALSE(public_key.HasPrivateKey());
+	Signer::DSA dsa(public_key);
+	const Safe::Binary message("This is a test message.");
+	FIFO signed_data;
+	ASSERT_FALSE(dsa.Sign(message.span(), signed_data));
+	ASSERT_TRUE(signed_data.Data().empty());
+	RETURN_TEST(0);
+}
+
 int test_dsa_verify_with_corrupted_signature(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_dsa_verify_with_corrupted_signature";
-	const std::string message = "This is a test message.";
+	const Safe::String message = "This is a test message.";
 	Signer::DSA dsa(kp);
 	FIFO signed_data;
-	ASSERT_TRUE(fn_name, dsa.Sign(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signed_data));
-	std::string signature = DeserializeString(signed_data.Data());
-	if (!signature.empty())
-		signature[0] = static_cast<char>(~signature[0]);
-	ASSERT_FALSE(fn_name, dsa.Verify(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signature));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(dsa.Sign(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), signed_data));
+	Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(signature.empty());
+	signature.front() = static_cast<char>(~signature.front());
+	ASSERT_FALSE(dsa.Verify(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_verify_with_invalid_signatures(KeyPair::Generic::PointerType kp) {
+	const Safe::Binary message("This is a test message.");
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(message.span(), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(signature.empty());
+	ASSERT_TRUE(dsa.Verify(message.span(), static_cast<std::string_view>(signature)));
+	const Safe::String empty;
+	ASSERT_FALSE(dsa.Verify(message.span(), static_cast<std::string_view>(empty)));
+	const Safe::String malformed(signature.size(), '\0');
+	ASSERT_FALSE(dsa.Verify(message.span(), static_cast<std::string_view>(malformed)));
+	Safe::String truncated = signature;
+	truncated.pop_back();
+	ASSERT_FALSE(dsa.Verify(message.span(), static_cast<std::string_view>(truncated)));
+	Safe::String extended = signature;
+	extended.push_back('\0');
+	ASSERT_FALSE(dsa.Verify(message.span(), static_cast<std::string_view>(extended)));
+	ASSERT_TRUE(dsa.Verify(message.span(), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_verify_with_malformed_keys(KeyPair::Generic::PointerType kp) {
+	Signer::DSA signer(kp);
+	const Safe::Binary message("Malformed keys");
+	FIFO signed_data;
+	ASSERT_TRUE(signer.Sign(message.span(), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(signature.empty());
+	const std::array<std::string_view, 3> materials {
+		std::string_view{}, "not a key", std::string_view("bad\0key", 7)
+	};
+	for (const auto material: materials) {
+		const KeyPair::DSA invalid_key(material);
+		Signer::DSA invalid_signer(invalid_key);
+		ASSERT_FALSE(invalid_signer.Verify(message.span(), static_cast<std::string_view>(signature)));
+		FIFO failed_output;
+		ASSERT_FALSE(invalid_signer.Sign(message.span(), failed_output));
+		ASSERT_TRUE(failed_output.Data().empty());
+	}
+	const KeyPair::DSA invalid_private(static_cast<std::string_view>(kp->PublicKey()),
+		Safe::Optional<Secure::Password>(Secure::Password("malformed private key")));
+	ASSERT_TRUE(invalid_private.HasPrivateKey());
+	Signer::DSA invalid_signer(invalid_private);
+	FIFO failed_output;
+	ASSERT_FALSE(invalid_signer.Sign(message.span(), failed_output));
+	ASSERT_TRUE(failed_output.Data().empty());
+	ASSERT_TRUE(signer.Verify(message.span(), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
 }
 
 int test_dsa_verify_with_mismatched_key(KeyPair::Generic::PointerType kp) {
-	const std::string fn_name = "test_dsa_verify_with_mismatched_key";
-	const std::string message = "This is a test message.";
+	const Safe::String message = "This is a test message.";
 	Signer::DSA dsa(kp);
 	auto kp2 = KeyPair::DSA::Generate(2048);
-	ASSERT_TRUE(fn_name, static_cast<bool>(kp2));
+	ASSERT_TRUE(static_cast<bool>(kp2));
 	Signer::DSA dsa2(kp2);
 	FIFO signed_data;
-	ASSERT_TRUE(fn_name, dsa.Sign(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signed_data));
-	const std::string signature = DeserializeString(signed_data.Data());
-	ASSERT_FALSE(fn_name, dsa2.Verify(std::span<const std::byte>(
-		reinterpret_cast<const std::byte*>(message.data()), message.size()), signature));
-	RETURN_TEST(fn_name, 0);
+	ASSERT_TRUE(dsa.Sign(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(dsa2.Verify(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_verify_with_wrong_message(KeyPair::Generic::PointerType kp) {
+	const Safe::Binary message("Original message");
+	const Safe::Binary modified_message("Modified message");
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(message.span(), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_TRUE(dsa.Verify(message.span(), static_cast<std::string_view>(signature)));
+	ASSERT_FALSE(dsa.Verify(modified_message.span(), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+// -------------------
+// Sign / verify
+// -------------------
+
+int test_dsa_sign_and_verify(KeyPair::Generic::PointerType kp) {
+	const Safe::String message = "This is a test message.";
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_TRUE(dsa.Verify(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(message.data()), static_cast<std::size_t>(message.size())), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_sign_and_verify_embedded_nul_message(KeyPair::Generic::PointerType kp) {
+	const Safe::Binary message(std::string_view("before\0after", 12));
+	const Safe::Binary prefix("before");
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(message.span(), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(signature.empty());
+	ASSERT_TRUE(dsa.Verify(message.span(), static_cast<std::string_view>(signature)));
+	ASSERT_FALSE(dsa.Verify(prefix.span(), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_sign_and_verify_empty_message(KeyPair::Generic::PointerType kp) {
+	const std::span<const std::byte> message;
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(message, signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	ASSERT_FALSE(signature.empty());
+	ASSERT_TRUE(dsa.Verify(message, static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
+}
+
+int test_dsa_verify_with_public_only_key(KeyPair::Generic::PointerType kp) {
+	const Safe::Binary message("This is a test message.");
+	Signer::DSA dsa(kp);
+	FIFO signed_data;
+	ASSERT_TRUE(dsa.Sign(message.span(), signed_data));
+	const Safe::String signature = DeserializeString(signed_data.Data());
+	const KeyPair::DSA public_key(static_cast<std::string_view>(kp->PublicKey()));
+	ASSERT_FALSE(public_key.HasPrivateKey());
+	Signer::DSA verifier(public_key);
+	ASSERT_TRUE(verifier.Verify(message.span(), static_cast<std::string_view>(signature)));
+	RETURN_TEST(0);
 }
 
 int main() {
@@ -110,15 +259,27 @@ int main() {
 	}
 
 	// -------------------
-	// Sign / verify
+	// Class surface
 	// -------------------
-	result += test_dsa_sign_and_verify(kp);
+	result += test_dsa_copy_move_and_clone(kp);
 
 	// -------------------
 	// Failure modes
 	// -------------------
+	result += test_dsa_sign_with_public_only_key(kp);
 	result += test_dsa_verify_with_corrupted_signature(kp);
+	result += test_dsa_verify_with_invalid_signatures(kp);
+	result += test_dsa_verify_with_malformed_keys(kp);
 	result += test_dsa_verify_with_mismatched_key(kp);
+	result += test_dsa_verify_with_wrong_message(kp);
+
+	// -------------------
+	// Sign / verify
+	// -------------------
+	result += test_dsa_sign_and_verify(kp);
+	result += test_dsa_sign_and_verify_embedded_nul_message(kp);
+	result += test_dsa_sign_and_verify_empty_message(kp);
+	result += test_dsa_verify_with_public_only_key(kp);
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

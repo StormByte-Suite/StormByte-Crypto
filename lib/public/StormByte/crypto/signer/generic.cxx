@@ -52,7 +52,7 @@ using namespace StormByte::Crypto::Signer;
 Generic::~Generic() noexcept = default;
 
 bool Generic::DoSign(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -60,11 +60,11 @@ bool Generic::DoSign(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMod
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoSign(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoSign(data.span(), output);
 }
 
 bool Generic::DoVerify(Buffer::ReadOnly& input, std::string_view signature, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -72,7 +72,7 @@ bool Generic::DoVerify(Buffer::ReadOnly& input, std::string_view signature, Read
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoVerify(std::span<const std::byte>(data.data(), data.size()), signature);
+	return DoVerify(data.span(), signature);
 }
 
 namespace StormByte::Crypto::Signer {

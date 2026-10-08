@@ -41,9 +41,10 @@
 #pragma once
 
 #include <StormByte/buffer/consumer.hxx>
-#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/type_traits.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
@@ -145,11 +146,8 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Compress(const Range& input, Buffer::WriteOnly& output) const {
-						StormByte::BinaryData data;
-						for (const auto value: input) {
-							data.emplace_back(static_cast<std::byte>(value));
-						}
-						return Compress(std::span<const std::byte>(data), output);
+						StormByte::Safe::Binary data(input);
+						return Compress(std::span<const std::byte>{data.span()}, output);
 					}
 
 					/**
@@ -206,11 +204,8 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Decompress(const Range& input, Buffer::WriteOnly& output) const {
-						StormByte::BinaryData data;
-						for (const auto value: input) {
-							data.emplace_back(static_cast<std::byte>(value));
-						}
-						return Decompress(std::span<const std::byte>(data), output);
+						StormByte::Safe::Binary data(input);
+						return Decompress(std::span<const std::byte>{data.span()}, output);
 					}
 
 					/**

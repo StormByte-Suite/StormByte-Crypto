@@ -41,17 +41,18 @@
 #pragma once
 
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/vector.hxx>
 
 #include <cstddef>
-#include <secblock.h>
 
 /**
+ * @namespace StormByte::Crypto::Helpers
  * @brief Private helpers of the Crypto module.
  */
 namespace StormByte::Crypto::Helpers {
 	/**
 	 * @class SecureContent
-	 * @brief Wiped byte buffer on Crypto++ SecByteBlock.
+	 * @brief Base-owned byte buffer wiped before releasing its storage.
 	 *
 	 * Exact size; no terminator. Implementation only.
 	 */
@@ -62,10 +63,7 @@ namespace StormByte::Crypto::Helpers {
 			 * @param data Source, or nullptr if size is 0.
 			 * @param size Byte count.
 			 */
-			SecureContent(const void* data, std::size_t size) noexcept;
-
-			/** @brief Wipe the bytes before releasing the backing storage. */
-			~SecureContent() noexcept;
+			SecureContent(const void* data, std::size_t size);
 
 			/**
 			 * @brief Copy constructor (deleted).
@@ -73,9 +71,24 @@ namespace StormByte::Crypto::Helpers {
 			SecureContent(const SecureContent&) = delete;
 
 			/**
+			 * @brief Secure storage cannot be moved independently of its shared owner.
+			 */
+			SecureContent(SecureContent&&) = delete;
+
+			/**
+			 * @brief Wipe the bytes before releasing the backing storage.
+			 */
+			~SecureContent() noexcept;
+
+			/**
 			 * @brief Copy assignment (deleted).
 			 */
 			SecureContent& operator=(const SecureContent&) = delete;
+
+			/**
+			 * @brief Secure storage cannot be move-assigned.
+			 */
+			SecureContent& operator=(SecureContent&&) = delete;
 
 			/**
 			 * @brief Zero the buffer.
@@ -102,6 +115,6 @@ namespace StormByte::Crypto::Helpers {
 			bool Equal(const SecureContent& other) const noexcept;
 
 		private:
-			CryptoPP::SecByteBlock m_block;	///< Backing storage
+			StormByte::Safe::Vector<unsigned char> m_block;	///< Base-owned wiped storage.
 	};
 }

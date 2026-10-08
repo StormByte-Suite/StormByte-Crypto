@@ -39,11 +39,14 @@
  */
 
 #include <StormByte/crypto/helpers/secure_content.hxx>
+#include <StormByte/crypto/helpers/secure_wipe.hxx>
+
 #include <cstring>
+
 using namespace StormByte::Crypto::Helpers;
-SecureContent::SecureContent(const void* data, std::size_t size) noexcept
-	: m_block(size)
-{
+
+SecureContent::SecureContent(const void* data, std::size_t size)
+	: m_block(StormByte::Size{size}, 0) {
 	if (size > 0 && data)
 		std::memcpy(m_block.data(), data, size);
 }
@@ -53,12 +56,11 @@ SecureContent::~SecureContent() noexcept {
 }
 
 void SecureContent::Wipe() noexcept {
-	if (m_block.size() > 0)
-		m_block.CleanNew(0);
+	SecureWipe(m_block);
 }
 
 std::size_t SecureContent::Size() const noexcept {
-	return m_block.size();
+	return static_cast<std::size_t>(m_block.size());
 }
 
 const unsigned char* SecureContent::Data() const noexcept {
@@ -68,8 +70,8 @@ const unsigned char* SecureContent::Data() const noexcept {
 bool SecureContent::Equal(const SecureContent& other) const noexcept {
 	if (m_block.size() != other.m_block.size())
 		return false;
-	unsigned char diff = 0;
-	for (std::size_t i = 0; i < m_block.size(); ++i)
-		diff |= static_cast<unsigned char>(m_block[i] ^ other.m_block[i]);
-	return diff == 0;
+	unsigned char difference = 0;
+	for (StormByte::Size index{0}; index < m_block.size(); ++index)
+		difference |= static_cast<unsigned char>(m_block[index] ^ other.m_block[index]);
+	return difference == 0;
 }

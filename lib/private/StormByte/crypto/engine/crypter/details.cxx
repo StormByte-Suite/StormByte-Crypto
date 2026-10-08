@@ -40,26 +40,29 @@
 
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/engine/crypter/details.hxx>
+#include <StormByte/crypto/helpers/callback.hxx>
+#include <StormByte/safe/thread.hxx>
 
-#include <thread>
+#include <utility>
 
+using namespace StormByte;
 using StormByte::Buffer::Consumer;
 using StormByte::Buffer::Producer;
 using StormByte::Buffer::WriteOnly;
 using StormByte::Crypto::ReadMode;
 
 namespace {
-	constexpr unsigned long long kChunkSize = 4096;
+	constexpr ByteSize ChunkSize{4096};
 }
 
 bool StormByte::Crypto::Engine::Crypter::ProcessSpan(
 	std::span<const std::byte> data,
 	WriteOnly& output,
-	std::unique_ptr<Ops> ops) noexcept {
+	Safe::Unique<Ops> ops) noexcept {
 	if (!ops)
 		return false;
 	try {
-		StormByte::BinaryData chunk;
+		Safe::Binary chunk;
 		if (!ops->WriteHeader(chunk))
 			return false;
 		if (!chunk.empty() && !output.Write(std::move(chunk)))
@@ -85,51 +88,20 @@ bool StormByte::Crypto::Engine::Crypter::ProcessSpan(
 Consumer StormByte::Crypto::Engine::Crypter::Stream(
 	Consumer consumer,
 	ReadMode mode,
-	std::unique_ptr<Ops> ops) noexcept {
+	Safe::Unique<Ops> ops) noexcept {
 	Producer producer;
 	if (!ops) {
 		producer.SetError();
 		return producer.Consumer();
 	}
 
-	std::thread([consumer = std::move(consumer), producer, ops = std::move(ops), mode]() mutable {
-		try {
-			StormByte::BinaryData outChunk;
-			if (!ops->WriteHeader(outChunk)) {
-				producer.SetError();
-				return;
-			}
-
-			if (!outChunk.empty() && !producer.Write(std::move(outChunk))) {
-				producer.SetError();
-				return;
-			}
-
-			outChunk.clear();
-			if (!ops->ReadHeader(consumer)) {
-				producer.SetError();
-				return;
-			}
-
-			while (!consumer.EoF()) {
-				const StormByte::ByteSize available = consumer.Available();
-				if (available == StormByte::ByteSize{0}) {
-					std::this_thread::yield();
-					continue;
-				}
-
-				const StormByte::ByteSize chunk{kChunkSize};
-				const StormByte::ByteSize toRead = (available < chunk) ? available : chunk;
-				StormByte::BinaryData data;
-				const bool ok = (mode == ReadMode::Copy)
-					? consumer.Read(toRead, data)
-					: consumer.Extract(toRead, data);
-				if (!ok) {
-					producer.SetError();
-					return;
-				}
-
-				if (!ops->Process(std::span<const std::byte>(data.data(), data.size()), outChunk)) {
+	try {
+		auto owner = Safe::Shared<Safe::Unique<Ops>>::MakePointer<Safe::Unique<Ops>>(std::move(ops));
+		auto callback = Crypto::Helpers::MakeCallback<>([consumer = std::move(consumer), producer, owner = std::move(owner), mode]() mutable {
+			try {
+				auto& engine = *owner;
+				Safe::Binary outChunk;
+				if (!engine->WriteHeader(outChunk)) {
 					producer.SetError();
 					return;
 				}
@@ -140,22 +112,66 @@ Consumer StormByte::Crypto::Engine::Crypter::Stream(
 				}
 
 				outChunk.clear();
-			}
+				if (!engine->ReadHeader(consumer)) {
+					producer.SetError();
+					return;
+				}
 
-			if (!ops->Finalize(outChunk)) {
+				while (!consumer.EoF()) {
+					const ByteSize available = consumer.Available();
+					if (available == ByteSize{0}) {
+						Safe::this_thread::yield();
+						continue;
+					}
+
+					const ByteSize toRead = (available < ChunkSize) ? available : ChunkSize;
+					Safe::Binary data;
+					const bool ok = (mode == ReadMode::Copy)
+						? consumer.Read(toRead, data)
+						: consumer.Extract(toRead, data);
+					if (!ok) {
+						producer.SetError();
+						return;
+					}
+
+					if (!engine->Process(std::span<const std::byte>(data.data(), static_cast<std::size_t>(data.size())), outChunk)) {
+						producer.SetError();
+						return;
+					}
+
+					if (!outChunk.empty() && !producer.Write(std::move(outChunk))) {
+						producer.SetError();
+						return;
+					}
+
+					outChunk.clear();
+				}
+
+				if (!engine->Finalize(outChunk)) {
+					producer.SetError();
+					return;
+				}
+
+				if (!outChunk.empty() && !producer.Write(std::move(outChunk))) {
+					producer.SetError();
+					return;
+				}
+
+				producer.Close();
+			} catch (...) {
 				producer.SetError();
-				return;
 			}
-
-			if (!outChunk.empty() && !producer.Write(std::move(outChunk))) {
+		});
+		Safe::Thread([callback = std::move(callback), producer]() mutable {
+			try {
+				if (callback.Call() != Safe::Status::Success)
+					producer.SetError();
+			} catch (...) {
 				producer.SetError();
-				return;
 			}
-
-			producer.Close();
-		} catch (...) {
-			producer.SetError();
-		}
-	}).detach();
+		}).detach();
+	} catch (...) {
+		producer.SetError();
+	}
 	return producer.Consumer();
 }

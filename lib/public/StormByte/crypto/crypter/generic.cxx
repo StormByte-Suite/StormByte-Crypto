@@ -47,7 +47,7 @@ using namespace StormByte::Crypto::Crypter;
 Generic::~Generic() noexcept = default;
 
 bool Generic::DoEncrypt(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -55,11 +55,11 @@ bool Generic::DoEncrypt(Buffer::ReadOnly& input, Buffer::WriteOnly& output, Read
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoEncrypt(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoEncrypt(data.span(), output);
 }
 
 bool Generic::DoDecrypt(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -67,5 +67,5 @@ bool Generic::DoDecrypt(Buffer::ReadOnly& input, Buffer::WriteOnly& output, Read
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoDecrypt(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoDecrypt(data.span(), output);
 }

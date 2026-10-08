@@ -53,7 +53,7 @@ using namespace StormByte::Crypto::Hasher;
 Generic::~Generic() noexcept = default;
 
 bool Generic::DoHash(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMode mode) const noexcept {
-	StormByte::BinaryData data;
+	StormByte::Safe::Binary data;
 	bool read_ok;
 	if (mode == ReadMode::Copy)
 		read_ok = input.Read(StormByte::ByteSize{0}, data);
@@ -61,7 +61,7 @@ bool Generic::DoHash(Buffer::ReadOnly& input, Buffer::WriteOnly& output, ReadMod
 		read_ok = input.Extract(StormByte::ByteSize{0}, data);
 	if (!read_ok)
 		return false;
-	return DoHash(std::span<const std::byte>(data.data(), data.size()), output);
+	return DoHash(data.span(), output);
 }
 
 namespace StormByte::Crypto::Hasher {

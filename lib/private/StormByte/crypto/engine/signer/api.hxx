@@ -43,17 +43,16 @@
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/engine/signer/details.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
-#include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/string.hxx>
 
 #include <filters.h>
-#include <memory>
 #include <span>
-#include <string>
 #include <string_view>
+#include <utility>
 
 /**
  * @namespace StormByte
@@ -66,8 +65,8 @@ namespace StormByte {
 	 */
 	namespace Crypto {
 		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
+			 * @namespace StormByte::Crypto::Engine
+			 * @brief Private engines of the Crypto module.
 		 */
 		namespace Engine {
 			/**
@@ -75,7 +74,11 @@ namespace StormByte {
 			 * @brief Private signer implementation.
 			 */
 			namespace Signer {
-				namespace {
+				/**
+				 * @namespace StormByte::Crypto::Engine::Signer::Detail
+				 * @brief Concrete signer backends owned and destroyed inside Crypto.
+				 */
+				namespace Detail {
 					/**
 					 * @struct ConcreteSignBox
 					 * @brief Crypto++ SignerFilter wrapped as SignBox.
@@ -84,41 +87,64 @@ namespace StormByte {
 					 */
 					template<typename SignerT, typename PrivateKeyT>
 					struct ConcreteSignBox final : SignBox {
-						std::unique_ptr<PrivateKeyT> key;					///< Loaded private key
-						std::unique_ptr<SignerT> signer;					///< Crypto++ signer
-						StormByte::BinaryData signature;					///< Accumulated signature
-						std::unique_ptr<CryptoPP::SignerFilter> filter;		///< Filter writing into signature
-
 						/**
 						 * @brief Load the private key and build the filter.
 						 * @param privKey DER private key.
 						 */
 						explicit ConcreteSignBox(const Secure::Password& privKey) {
-							auto keyRes = KeyPair::DeserializeKey<PrivateKeyT>(privKey);
-							if (!keyRes)
+							auto loadedKey = KeyPair::DeserializeKey<PrivateKeyT>(privKey);
+							if (!loadedKey)
 								return;
-							key = std::make_unique<PrivateKeyT>(std::move(*keyRes));
-							if (!key->Validate(RNG(), 3)) {
-								key.reset();
+							m_key = std::move(loadedKey);
+							if (!m_key->Validate(RNG(), 3)) {
+								m_key.reset();
 								return;
 							}
-							signer = std::make_unique<SignerT>(*key);
-							filter = std::make_unique<CryptoPP::SignerFilter>(
-								RNG(), *signer,
-								new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(signature)
-							);
+							m_signer = Safe::Unique<SignerT>::template MakePointer<SignerT>(*m_key);
+							m_filter = Safe::Unique<CryptoPP::SignerFilter>::MakePointer<CryptoPP::SignerFilter>(RNG(), *m_signer);
 						}
 
 						/**
+						 * @brief Native signing state cannot be copied.
+						 * @param other Source backend.
+						 */
+						ConcreteSignBox(const ConcreteSignBox& other) = delete;
+
+						/**
+						 * @brief Native signing state cannot be moved.
+						 * @param other Source backend.
+						 */
+						ConcreteSignBox(ConcreteSignBox&& other) = delete;
+
+						/**
+						 * @brief Destroy the filter before the signer and private key in Crypto.
+						 */
+						~ConcreteSignBox() override = default;
+
+						/**
+						 * @brief Native signing state cannot be copy-assigned.
+						 * @param other Source backend.
+						 * @return This backend.
+						 */
+						ConcreteSignBox& operator=(const ConcreteSignBox& other) = delete;
+
+						/**
+						 * @brief Native signing state cannot be move-assigned.
+						 * @param other Source backend.
+						 * @return This backend.
+						 */
+						ConcreteSignBox& operator=(ConcreteSignBox&& other) = delete;
+
+						/**
 						 * @brief Feed one message chunk.
-						 * @param in Input bytes.
+						 * @param input Input bytes borrowed until the update returns.
 						 * @return true on success.
 						 */
-						bool Update(std::span<const std::byte> in) override {
-							if (!filter)
+						bool Update(std::span<const std::byte> input) override {
+							if (!m_filter)
 								return false;
 							try {
-								filter->Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
+								m_filter->Put(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size_bytes());
 								return true;
 							} catch (...) {
 								return false;
@@ -127,21 +153,28 @@ namespace StormByte {
 
 						/**
 						 * @brief Finish signing and move the signature out.
-						 * @param out Destination.
+						 * @param output Safe signature destination.
 						 * @return true on success.
 						 */
-						bool Finalize(StormByte::BinaryData& out) override {
-							if (!filter)
+						bool Finalize(Safe::Binary& output) override {
+							if (!m_filter)
 								return false;
 							try {
-								filter->MessageEnd();
-								out = std::move(signature);
-								filter.reset();
+								m_filter->MessageEnd();
+								output.resize(ByteSize{m_filter->MaxRetrievable()});
+								const std::size_t outputSize = static_cast<std::size_t>(output.size());
+								if (m_filter->Get(reinterpret_cast<CryptoPP::byte*>(output.data()), outputSize) != outputSize)
+									return false;
+								m_filter.reset();
 								return true;
 							} catch (...) {
 								return false;
 							}
 						}
+						private:
+							Safe::Shared<PrivateKeyT> m_key;			///< Loaded private key, destroyed in Crypto.
+							Safe::Unique<SignerT> m_signer;			///< Private Crypto++ signer.
+							Safe::Unique<CryptoPP::SignerFilter> m_filter;	///< Native filter with secure queued output.
 					};
 
 					/**
@@ -152,25 +185,20 @@ namespace StormByte {
 					 */
 					template<typename VerifierT, typename PublicKeyT>
 					struct ConcreteVerifyBox final : VerifyBox {
-						std::unique_ptr<PublicKeyT> key;								///< Loaded public key
-						std::unique_ptr<VerifierT> verifier;							///< Crypto++ verifier
-						bool result = false;											///< PUT_RESULT sink
-						std::unique_ptr<CryptoPP::SignatureVerificationFilter> filter;	///< Filter
-
 						/**
 						 * @brief Load the public key.
 						 * @param pubKey Base64 public key.
 						 */
-						explicit ConcreteVerifyBox(const std::string& pubKey) {
-							auto keyRes = KeyPair::DeserializeKey<PublicKeyT>(pubKey);
-							if (!keyRes)
+						explicit ConcreteVerifyBox(std::string_view pubKey) {
+							auto loadedKey = KeyPair::DeserializeKey<PublicKeyT>(pubKey);
+							if (!loadedKey)
 								return;
-							key = std::make_unique<PublicKeyT>(std::move(*keyRes));
-							if (!key->Validate(RNG(), 3)) {
-								key.reset();
+							m_key = std::move(loadedKey);
+							if (!m_key->Validate(RNG(), 3)) {
+								m_key.reset();
 								return;
 							}
-							verifier = std::make_unique<VerifierT>(*key);
+							m_verifier = Safe::Unique<VerifierT>::template MakePointer<VerifierT>(*m_key);
 						}
 
 						/**
@@ -178,26 +206,54 @@ namespace StormByte {
 						 * @param pubKey Base64 public key.
 						 */
 						explicit ConcreteVerifyBox(const StormByte::Safe::String& pubKey):
-							ConcreteVerifyBox(std::string(static_cast<std::string_view>(pubKey))) {}
+							ConcreteVerifyBox(static_cast<std::string_view>(pubKey)) {}
+
+						/**
+						 * @brief Native verification state cannot be copied.
+						 * @param other Source backend.
+						 */
+						ConcreteVerifyBox(const ConcreteVerifyBox& other) = delete;
+
+						/**
+						 * @brief Native verification state cannot be moved.
+						 * @param other Source backend.
+						 */
+						ConcreteVerifyBox(ConcreteVerifyBox&& other) = delete;
+
+						/**
+						 * @brief Destroy the filter before the verifier and public key in Crypto.
+						 */
+						~ConcreteVerifyBox() override = default;
+
+						/**
+						 * @brief Native verification state cannot be copy-assigned.
+						 * @param other Source backend.
+						 * @return This backend.
+						 */
+						ConcreteVerifyBox& operator=(const ConcreteVerifyBox& other) = delete;
+
+						/**
+						 * @brief Native verification state cannot be move-assigned.
+						 * @param other Source backend.
+						 * @return This backend.
+						 */
+						ConcreteVerifyBox& operator=(ConcreteVerifyBox&& other) = delete;
 
 						/**
 						 * @brief Push the signature before message bytes.
 						 * @param signature Signature.
 						 * @return true on success.
 						 */
-						bool Begin(const std::string& signature) override {
-							if (!verifier)
+						bool Begin(std::string_view signature) override {
+							if (!m_verifier)
 								return false;
 							try {
-								filter = std::make_unique<CryptoPP::SignatureVerificationFilter>(
-									*verifier,
-									new CryptoPP::ArraySink(
-										reinterpret_cast<CryptoPP::byte*>(&result),
-										sizeof(result)),
-									CryptoPP::SignatureVerificationFilter::PUT_RESULT |
-										CryptoPP::SignatureVerificationFilter::SIGNATURE_AT_BEGIN
+								m_filter = Safe::Unique<CryptoPP::SignatureVerificationFilter>::MakePointer<CryptoPP::SignatureVerificationFilter>(
+									*m_verifier,
+									nullptr,
+									CryptoPP::SignatureVerificationFilter::SIGNATURE_AT_BEGIN
 								);
-								filter->Put(
+								m_filter->Put(
 									reinterpret_cast<const CryptoPP::byte*>(signature.data()),
 									signature.size());
 								return true;
@@ -208,14 +264,14 @@ namespace StormByte {
 
 						/**
 						 * @brief Feed one message chunk.
-						 * @param in Input bytes.
+						 * @param input Input bytes borrowed until the update returns.
 						 * @return true on success.
 						 */
-						bool Update(std::span<const std::byte> in) override {
-							if (!filter)
+						bool Update(std::span<const std::byte> input) override {
+							if (!m_filter)
 								return false;
 							try {
-								filter->Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
+								m_filter->Put(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size_bytes());
 								return true;
 							} catch (...) {
 								return false;
@@ -227,18 +283,23 @@ namespace StormByte {
 						 * @return true if the signature is valid.
 						 */
 						bool Finalize() override {
-							if (!filter)
+							if (!m_filter)
 								return false;
 							try {
-								filter->MessageEnd();
-								filter.reset();
-								return result;
+								m_filter->MessageEnd();
+								const bool verified = m_filter->GetLastResult();
+								m_filter.reset();
+								return verified;
 							} catch (...) {
 								return false;
 							}
 						}
+						private:
+							Safe::Shared<PublicKeyT> m_key;		///< Loaded public key, destroyed in Crypto.
+							Safe::Unique<VerifierT> m_verifier;	///< Private Crypto++ verifier.
+							Safe::Unique<CryptoPP::SignatureVerificationFilter> m_filter;	///< Native verification filter.
 					};
-				}
+					}
 
 				/**
 				 * @brief One-shot sign from a Password.
@@ -251,9 +312,13 @@ namespace StormByte {
 				 */
 				template<typename SignerT, typename PrivateKeyT>
 				bool Sign(std::span<const std::byte> data, const Secure::Password& privKey, Buffer::WriteOnly& output) noexcept {
-					return SignSpan(
-						data, output,
-						std::make_unique<ConcreteSignBox<SignerT, PrivateKeyT>>(privKey));
+					try {
+						return SignSpan(
+							data, output,
+							Safe::Unique<SignBox>::template MakePointer<Detail::ConcreteSignBox<SignerT, PrivateKeyT>>(privKey));
+					} catch (...) {
+						return false;
+					}
 				}
 
 				/**
@@ -283,9 +348,13 @@ namespace StormByte {
 				 */
 				template<typename SignerT, typename PrivateKeyT>
 				Buffer::Consumer Sign(Buffer::Consumer consumer, Secure::Password privKey, ReadMode mode) noexcept {
-					return SignStream(
-						std::move(consumer), mode,
-						std::make_unique<ConcreteSignBox<SignerT, PrivateKeyT>>(std::move(privKey)));
+					try {
+						auto box = Safe::Unique<SignBox>::template MakePointer<Detail::ConcreteSignBox<SignerT, PrivateKeyT>>(privKey);
+						return SignStream(
+							std::move(consumer), mode, std::move(box));
+					} catch (...) {
+						return SignStream(std::move(consumer), mode, {});
+					}
 				}
 
 				/**
@@ -317,10 +386,14 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(std::span<const std::byte> data, const std::string& signature, const std::string& pubKey) noexcept {
-					return VerifySpan(
-						data, signature,
-						std::make_unique<ConcreteVerifyBox<VerifierT, PublicKeyT>>(pubKey));
+				bool Verify(std::span<const std::byte> data, std::string_view signature, std::string_view pubKey) noexcept {
+					try {
+						return VerifySpan(
+							data, signature,
+							Safe::Unique<VerifyBox>::template MakePointer<Detail::ConcreteVerifyBox<VerifierT, PublicKeyT>>(pubKey));
+					} catch (...) {
+						return false;
+					}
 				}
 
 				/**
@@ -333,8 +406,8 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(std::span<const std::byte> data, const std::string& signature, const StormByte::Safe::String& pubKey) noexcept {
-					return Verify<VerifierT, PublicKeyT>(data, signature, std::string(static_cast<std::string_view>(pubKey)));
+				bool Verify(std::span<const std::byte> data, std::string_view signature, const StormByte::Safe::String& pubKey) noexcept {
+					return Verify<VerifierT, PublicKeyT>(data, signature, static_cast<std::string_view>(pubKey));
 				}
 
 				/**
@@ -347,7 +420,7 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(std::span<const std::byte> data, const std::string& signature, const StormByte::Crypto::KeyPair::Generic::PointerType keypair) noexcept {
+				bool Verify(std::span<const std::byte> data, std::string_view signature, const StormByte::Crypto::KeyPair::Generic::PointerType keypair) noexcept {
 					if (!keypair)
 						return false;
 					return Verify<VerifierT, PublicKeyT>(data, signature, keypair->PublicKey());
@@ -364,10 +437,14 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(Buffer::Consumer consumer, const std::string& signature, const std::string& pubKey, ReadMode mode) noexcept {
-					return VerifyStream(
-						std::move(consumer), mode, signature,
-						std::make_unique<ConcreteVerifyBox<VerifierT, PublicKeyT>>(pubKey));
+				bool Verify(Buffer::Consumer consumer, std::string_view signature, std::string_view pubKey, ReadMode mode) noexcept {
+					try {
+						return VerifyStream(
+							std::move(consumer), mode, signature,
+							Safe::Unique<VerifyBox>::template MakePointer<Detail::ConcreteVerifyBox<VerifierT, PublicKeyT>>(pubKey));
+					} catch (...) {
+						return false;
+					}
 				}
 
 				/**
@@ -381,8 +458,8 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(Buffer::Consumer consumer, const std::string& signature, const StormByte::Safe::String& pubKey, ReadMode mode) noexcept {
-					return Verify<VerifierT, PublicKeyT>(std::move(consumer), signature, std::string(static_cast<std::string_view>(pubKey)), mode);
+				bool Verify(Buffer::Consumer consumer, std::string_view signature, const StormByte::Safe::String& pubKey, ReadMode mode) noexcept {
+					return Verify<VerifierT, PublicKeyT>(std::move(consumer), signature, static_cast<std::string_view>(pubKey), mode);
 				}
 
 				/**
@@ -396,7 +473,7 @@ namespace StormByte {
 				 * @return true if valid.
 				 */
 				template<typename VerifierT, typename PublicKeyT>
-				bool Verify(Buffer::Consumer consumer, const std::string& signature, const StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
+				bool Verify(Buffer::Consumer consumer, std::string_view signature, const StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
 					if (!keypair)
 						return false;
 					return Verify<VerifierT, PublicKeyT>(std::move(consumer), signature, keypair->PublicKey(), mode);

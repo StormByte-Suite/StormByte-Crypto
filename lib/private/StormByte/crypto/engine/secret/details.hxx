@@ -44,9 +44,10 @@
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/optional.hxx>
 
-#include <string>
+#include <string_view>
 
 /**
+ * @namespace StormByte::Crypto::Engine::Secret
  * @brief Private key-agreement implementation.
  */
 namespace StormByte::Crypto::Engine::Secret {
@@ -57,9 +58,8 @@ namespace StormByte::Crypto::Engine::Secret {
 	 * @param bits Curve size (256 / 384 / 521).
 	 * @return Password, or empty.
 	 */
-	StormByte::Safe::Optional<Secure::Password> ECDHShare(const Secure::Password& privateKey,
-									const std::string& peerPublicKeyBase64,
-									unsigned short bits);
+	Safe::Optional<Secure::Password> ECDHShare(const Secure::Password& privateKey,
+		std::string_view peerPublicKeyBase64, unsigned short bits);
 
 	/**
 	 * @brief X25519 share.
@@ -67,6 +67,6 @@ namespace StormByte::Crypto::Engine::Secret {
 	 * @param peerPublicKeyBase64 Peer public key as Base64.
 	 * @return Password, or empty.
 	 */
-	StormByte::Safe::Optional<Secure::Password> X25519Share(const Secure::Password& privateKey,
-										const std::string& peerPublicKeyBase64);
+	Safe::Optional<Secure::Password> X25519Share(const Secure::Password& privateKey,
+		std::string_view peerPublicKeyBase64);
 }

@@ -43,8 +43,9 @@
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/pointers.hxx>
 
-#include <memory>
 #include <span>
 
 /**
@@ -58,7 +59,7 @@ namespace StormByte {
 	 */
 	namespace Crypto {
 		/**
-		 * @namespace StormByte::Crypto::Implementation
+		 * @namespace StormByte::Crypto::Engine
 		 * @brief Private implementation of the Crypto module.
 		 */
 		namespace Engine {
@@ -72,14 +73,48 @@ namespace StormByte {
 				 * @brief Chunk encrypt/decrypt engine (symmetric and asymmetric).
 				 */
 				struct Ops {
+					/**
+					 * @brief Construct a chunk engine interface.
+					 */
+					Ops() = default;
+
+					/**
+					 * @brief Copy the engine interface.
+					 * @param other Source interface.
+					 */
+					Ops(const Ops& other) = default;
+
+					/**
+					 * @brief Move the engine interface.
+					 * @param other Source interface.
+					 */
+					Ops(Ops&& other) noexcept = default;
+
+					/**
+					 * @brief Destroy the concrete chunk engine.
+					 */
 					virtual ~Ops() = default;
+
+					/**
+					 * @brief Copy-assign the engine interface.
+					 * @param other Source interface.
+					 * @return This interface.
+					 */
+					Ops& operator=(const Ops& other) = default;
+
+					/**
+					 * @brief Move-assign the engine interface.
+					 * @param other Source interface.
+					 * @return This interface.
+					 */
+					Ops& operator=(Ops&& other) noexcept = default;
 
 					/**
 					 * @brief Optional header write (salt||IV, hybrid envelope).
 					 * @param outChunk Destination.
 					 * @return true on success.
 					 */
-					virtual bool WriteHeader(StormByte::BinaryData& outChunk) {
+					virtual bool WriteHeader(Safe::Binary& outChunk) {
 						outChunk.clear();
 						return true;
 					}
@@ -108,33 +143,33 @@ namespace StormByte {
 					 * @param outChunk Output chunk.
 					 * @return true on success.
 					 */
-					virtual bool Process(std::span<const std::byte> in, StormByte::BinaryData& outChunk) = 0;
+					virtual bool Process(std::span<const std::byte> in, Safe::Binary& outChunk) = 0;
 
 					/**
 					 * @brief Finish and emit padding/tag.
 					 * @param outChunk Output chunk.
 					 * @return true on success.
 					 */
-					virtual bool Finalize(StormByte::BinaryData& outChunk) = 0;
+					virtual bool Finalize(Safe::Binary& outChunk) = 0;
 				};
 
 				/**
 				 * @brief One-shot encrypt/decrypt.
 				 * @param data Input.
 				 * @param output Destination.
-				 * @param ops Engine.
+				 * @param ops Crypto-created engine owner, consumed by this call.
 				 * @return true on success.
 				 */
-				bool ProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<Ops> ops) noexcept;
+				STORMBYTE_CRYPTO_PRIVATE bool ProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<Ops> ops) noexcept;
 
 				/**
 				 * @brief Streaming encrypt/decrypt.
 				 * @param consumer Input consumer.
 				 * @param mode Copy or move.
-				 * @param ops Engine.
-				 * @return Consumer with the result.
+				 * @param ops Crypto-created engine owner, transferred to the worker.
+				 * @return Consumer with the result or a permanent error.
 				 */
-				Buffer::Consumer Stream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<Ops> ops) noexcept;
+				STORMBYTE_CRYPTO_PRIVATE Buffer::Consumer Stream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<Ops> ops) noexcept;
 			}
 		}
 	}

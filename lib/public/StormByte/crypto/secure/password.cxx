@@ -48,15 +48,18 @@ using namespace StormByte::Crypto::Secure;
 
 Password::Password() noexcept = default;
 
-Password::Password(StormByte::Safe::String& value) noexcept
+Password::Password(std::string_view value)
+	: Password(value.data(), StormByte::ByteSize{value.size()}) {}
+
+Password::Password(StormByte::Safe::String& value)
 	: Password(value.data(), StormByte::ByteSize{static_cast<std::size_t>(value.size())}) {
 	StormByte::Crypto::Helpers::SecureWipe(value);
 }
 
-Password::Password(const char* value) noexcept
+Password::Password(const char* value)
 	: Password(value, StormByte::ByteSize{value ? std::strlen(value) : 0}) {}
 
-Password::Password(const void* data, StormByte::ByteSize size) noexcept
+Password::Password(const void* data, StormByte::ByteSize size)
 	: m_data(StormByte::Safe::Shared<StormByte::Crypto::Helpers::SecureContent>::MakePointer<StormByte::Crypto::Helpers::SecureContent>(data, static_cast<std::size_t>(size))) {}
 
 Password::Password(const Password& other) = default;

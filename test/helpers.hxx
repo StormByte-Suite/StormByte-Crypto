@@ -42,11 +42,17 @@
 
 #include <StormByte/buffer/consumer.hxx>
 #include <StormByte/buffer/fifo.hxx>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/string.hxx>
 
 #include <iostream>
-#include <string>
 #include <thread>
 
+/**
+ * @brief Drain a consumer until its producer closes.
+ * @param consumer Consumer to drain.
+ * @return Collected bytes.
+ */
 inline StormByte::Buffer::FIFO ReadAllFromConsumer(StormByte::Buffer::Consumer consumer) {
 	StormByte::Buffer::FIFO data;
 	while (!consumer.EoF()) {
@@ -56,28 +62,38 @@ inline StormByte::Buffer::FIFO ReadAllFromConsumer(StormByte::Buffer::Consumer c
 			continue;
 		}
 
-		StormByte::BinaryData d;
-		if (!consumer.Read(available, d)) {
+		StormByte::Safe::Binary bytes;
+		if (!consumer.Read(available, bytes)) {
 			std::cerr << "ReadAllFromConsumer: Read returned false, EoF=" << consumer.EoF()
 				<< " writable=" << consumer.IsWritable() << std::endl;
 			return data;
 		}
-		if (d.empty())
+		if (bytes.empty())
 			std::cerr << "ReadAllFromConsumer: read zero bytes despite available data" << std::endl;
 
-		data.Write(std::move(d));
+		data.Write(std::move(bytes));
 	}
 	return data;
 }
 
-inline std::string DeserializeString(const StormByte::BinaryData& data) {
+/**
+ * @brief Decode byte contents without discarding embedded NUL characters.
+ * @param data Bytes to decode.
+ * @return Text containing all bytes.
+ */
+inline StormByte::Safe::String DeserializeString(const StormByte::Safe::Binary& data) {
 	if (data.empty())
 		return {};
-	return std::string(reinterpret_cast<const char*>(data.data()), data.size());
+	return StormByte::Safe::String(std::string_view(reinterpret_cast<const char*>(data.data()), static_cast<std::size_t>(data.size())));
 }
 
-inline std::string DeserializeString(const StormByte::Buffer::FIFO& buffer) {
-	StormByte::BinaryData data;
+/**
+ * @brief Decode all bytes held in a FIFO.
+ * @param buffer Buffer to read.
+ * @return Text containing the buffer contents.
+ */
+inline StormByte::Safe::String DeserializeString(const StormByte::Buffer::FIFO& buffer) {
+	StormByte::Safe::Binary data;
 	if (!const_cast<StormByte::Buffer::FIFO&>(buffer).Read(StormByte::ByteSize{0}, data))
 		return {};
 	return DeserializeString(data);

@@ -47,7 +47,7 @@ using namespace StormByte::Crypto::Secret;
 Generic::~Generic() noexcept = default;
 
 namespace StormByte::Crypto::Secret {
-	Generic::PointerType Create(Type type, StormByte::Crypto::KeyPair::Generic::PointerType keypair) noexcept {
+	Generic::PointerType Create(Type type, StormByte::Crypto::KeyPair::Generic::PointerType keypair) {
 		if (!keypair)
 			return nullptr;
 		switch (type) {

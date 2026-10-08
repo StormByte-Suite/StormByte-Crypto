@@ -43,8 +43,6 @@
 #include <StormByte/crypto/keypair/ecdh.hxx>
 #include <StormByte/crypto/secret/generic.hxx>
 
-#include <string_view>
-
 /**
  * @namespace StormByte
  * @brief Root namespace of the StormByte suite.
@@ -86,7 +84,7 @@ namespace StormByte {
 					 * @param keypair Keypair.
 					 * @param bits Curve size in bits.
 					 */
-					inline ECDH(const KeyPair::ECDH& keypair, unsigned short bits = 256) noexcept:
+					explicit ECDH(const KeyPair::ECDH& keypair, unsigned short bits = 256):
 						Generic(Type::ECDH, keypair.Clone()), m_bits(bits) {}
 
 					/**
@@ -94,7 +92,7 @@ namespace StormByte {
 					 * @param keypair Keypair.
 					 * @param bits Curve size in bits.
 					 */
-					inline ECDH(KeyPair::ECDH&& keypair, unsigned short bits = 256) noexcept:
+					explicit ECDH(KeyPair::ECDH&& keypair, unsigned short bits = 256):
 						Generic(Type::ECDH, keypair.Move()), m_bits(bits) {}
 
 					/**
@@ -133,20 +131,21 @@ namespace StormByte {
 					 * @brief Clone this object.
 					 * @return Shared pointer to the clone.
 					 */
-					PointerType Clone() const noexcept override;
+					PointerType Clone() const override;
 
 					/**
 					 * @brief Move this object into a new instance.
 					 * @return Shared pointer to the moved object.
 					 */
-					PointerType Move() noexcept override;
+					PointerType Move() override;
 
 					/**
 					 * @brief Derive a shared secret.
-					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
+					 * @param peerPublicKey Peer public key as Base64, borrowed for this call.
 					 * @return Password on success, or empty.
+					 * @throws StormByte::Exception If Safe result storage cannot be created.
 					 */
-					StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const override;
+					StormByte::Safe::Optional<Secure::Password> Share(const StormByte::Safe::String& peerPublicKey) const override;
 
 				private:
 					unsigned short m_bits;	///< Curve size in bits

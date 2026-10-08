@@ -41,9 +41,10 @@
 #pragma once
 
 #include <StormByte/buffer/consumer.hxx>
-#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/type_traits.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
@@ -151,11 +152,11 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Encrypt(const Range& input, Buffer::WriteOnly& output) const {
-						StormByte::BinaryData data;
+						StormByte::Safe::Binary data;
 						for (const auto value: input) {
 							data.emplace_back(static_cast<std::byte>(value));
 						}
-						return Encrypt(std::span<const std::byte>(data), output);
+						return Encrypt(std::span<const std::byte>(data.span()), output);
 					}
 
 					/**
@@ -212,11 +213,11 @@ namespace StormByte {
 					 */
 					template<StormByte::Type::ByteInputRange Range>
 					bool Decrypt(const Range& input, Buffer::WriteOnly& output) const {
-						StormByte::BinaryData data;
+						StormByte::Safe::Binary data;
 						for (const auto value: input) {
 							data.emplace_back(static_cast<std::byte>(value));
 						}
-						return Decrypt(std::span<const std::byte>(data), output);
+						return Decrypt(std::span<const std::byte>(data.span()), output);
 					}
 
 					/**

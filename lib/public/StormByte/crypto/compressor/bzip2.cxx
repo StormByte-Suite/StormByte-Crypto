@@ -41,12 +41,10 @@
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/compressor/bzip2.hxx>
 #include <StormByte/crypto/engine/compressor/details.hxx>
+#include <StormByte/safe/vector.hxx>
 
 #include <algorithm>
 #include <bzlib.h>
-#include <cstring>
-#include <memory>
-#include <vector>
 
 using StormByte::Buffer::Consumer;
 using StormByte::Buffer::Producer;
@@ -58,7 +56,7 @@ namespace {
 
 	struct Bzip2CompressOps final : StormByte::Crypto::Engine::Compressor::StreamOps {
 		bz_stream strm{};
-		std::vector<char> outChunk;
+		StormByte::Safe::Vector<char> outChunk;
 		bool ok = false;
 
 		explicit Bzip2CompressOps(unsigned short level):
@@ -72,7 +70,7 @@ namespace {
 				BZ2_bzCompressEnd(&strm);
 		}
 
-		bool Process(std::span<const std::byte> in, StormByte::BinaryData& out) override {
+		bool Process(std::span<const std::byte> in, StormByte::Safe::Binary& out) override {
 			if (!ok)
 				return false;
 			try {
@@ -85,11 +83,8 @@ namespace {
 					if (rc != BZ_RUN_OK && rc != BZ_FINISH_OK && rc != BZ_FLUSH_OK)
 						return false;
 					const unsigned int produced = static_cast<unsigned int>(outChunk.size()) - strm.avail_out;
-					if (produced) {
-						const size_t old = out.size();
-						out.resize(old + produced);
-						std::memcpy(out.data() + old, reinterpret_cast<const std::byte*>(outChunk.data()), produced);
-					}
+					if (produced)
+						out.append(std::as_bytes(std::span(outChunk.data(), produced)));
 				}
 
 				return true;
@@ -98,7 +93,7 @@ namespace {
 			}
 		}
 
-		bool Finalize(StormByte::BinaryData& out) override {
+		bool Finalize(StormByte::Safe::Binary& out) override {
 			if (!ok)
 				return false;
 			try {
@@ -109,11 +104,8 @@ namespace {
 					if (r != BZ_FINISH_OK && r != BZ_STREAM_END && r != BZ_RUN_OK)
 						return false;
 					const unsigned int produced = static_cast<unsigned int>(outChunk.size()) - strm.avail_out;
-					if (produced) {
-						const size_t old = out.size();
-						out.resize(old + produced);
-						std::memcpy(out.data() + old, reinterpret_cast<const std::byte*>(outChunk.data()), produced);
-					}
+					if (produced)
+						out.append(std::as_bytes(std::span(outChunk.data(), produced)));
 
 					if (r == BZ_STREAM_END)
 						break;
@@ -130,7 +122,7 @@ namespace {
 
 	struct Bzip2DecompressOps final : StormByte::Crypto::Engine::Compressor::StreamOps {
 		bz_stream strm{};
-		std::vector<char> outChunk;
+		StormByte::Safe::Vector<char> outChunk;
 		bool ok = false;
 		bool ended = false;
 
@@ -145,7 +137,7 @@ namespace {
 				BZ2_bzDecompressEnd(&strm);
 		}
 
-		bool Process(std::span<const std::byte> in, StormByte::BinaryData& out) override {
+		bool Process(std::span<const std::byte> in, StormByte::Safe::Binary& out) override {
 			if (!ok || ended)
 				return !ended;
 			try {
@@ -158,11 +150,8 @@ namespace {
 					if (r != BZ_OK && r != BZ_STREAM_END)
 						return false;
 					const unsigned int produced = static_cast<unsigned int>(outChunk.size()) - strm.avail_out;
-					if (produced) {
-						const size_t old = out.size();
-						out.resize(old + produced);
-						std::memcpy(out.data() + old, reinterpret_cast<const std::byte*>(outChunk.data()), produced);
-					}
+					if (produced)
+						out.append(std::as_bytes(std::span(outChunk.data(), produced)));
 
 					if (r == BZ_STREAM_END) {
 						ended = true;
@@ -176,7 +165,7 @@ namespace {
 			}
 		}
 
-		bool Finalize(StormByte::BinaryData& /*out*/) override {
+		bool Finalize(StormByte::Safe::Binary& /*out*/) override {
 			if (!ok)
 				return false;
 			BZ2_bzDecompressEnd(&strm);
@@ -205,7 +194,7 @@ bool Bzip2::DoCompress(std::span<const std::byte> input, WriteOnly& output) cons
 	try {
 		unsigned int inLen = static_cast<unsigned int>(input.size_bytes());
 		unsigned int outLen = inLen + (inLen / 100) + 600;
-		std::vector<char> outBuf(outLen);
+		StormByte::Safe::Vector<char> outBuf(outLen);
 		const int rc = BZ2_bzBuffToBuffCompress(
 			outBuf.data(),
 			&outLen,
@@ -217,9 +206,7 @@ bool Bzip2::DoCompress(std::span<const std::byte> input, WriteOnly& output) cons
 		);
 		if (rc != BZ_OK)
 			return false;
-		StormByte::BinaryData compressed;
-		compressed.resize(outLen);
-		std::memcpy(compressed.data(), reinterpret_cast<const std::byte*>(outBuf.data()), outLen);
+		StormByte::Safe::Binary compressed(std::as_bytes(std::span(outBuf.data(), outLen)));
 		return output.Write(std::move(compressed));
 	} catch (...) {
 		return false;
@@ -228,7 +215,7 @@ bool Bzip2::DoCompress(std::span<const std::byte> input, WriteOnly& output) cons
 
 Consumer Bzip2::DoCompress(Consumer consumer, ReadMode mode) const noexcept {
 	return Engine::Compressor::Stream(
-		std::move(consumer), mode, std::make_unique<Bzip2CompressOps>(m_level));
+		std::move(consumer), mode, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<Bzip2CompressOps>(m_level));
 }
 
 bool Bzip2::DoDecompress(std::span<const std::byte> input, WriteOnly& output) const noexcept {
@@ -237,7 +224,7 @@ bool Bzip2::DoDecompress(std::span<const std::byte> input, WriteOnly& output) co
 	try {
 		unsigned int inLen = static_cast<unsigned int>(input.size_bytes());
 		unsigned int outLen = inLen * 5 + 1000;
-		std::vector<char> outBuf(outLen);
+		StormByte::Safe::Vector<char> outBuf(outLen);
 		const int rc = BZ2_bzBuffToBuffDecompress(
 			outBuf.data(),
 			&outLen,
@@ -248,9 +235,7 @@ bool Bzip2::DoDecompress(std::span<const std::byte> input, WriteOnly& output) co
 		);
 		if (rc != BZ_OK)
 			return false;
-		StormByte::BinaryData decompressed;
-		decompressed.resize(outLen);
-		std::memcpy(decompressed.data(), reinterpret_cast<const std::byte*>(outBuf.data()), outLen);
+		StormByte::Safe::Binary decompressed(std::as_bytes(std::span(outBuf.data(), outLen)));
 		return output.Write(std::move(decompressed));
 	} catch (...) {
 		return false;
@@ -259,5 +244,5 @@ bool Bzip2::DoDecompress(std::span<const std::byte> input, WriteOnly& output) co
 
 Consumer Bzip2::DoDecompress(Consumer consumer, ReadMode mode) const noexcept {
 	return Engine::Compressor::Stream(
-		std::move(consumer), mode, std::make_unique<Bzip2DecompressOps>());
+		std::move(consumer), mode, StormByte::Safe::Unique<Engine::Compressor::StreamOps>::MakePointer<Bzip2DecompressOps>());
 }

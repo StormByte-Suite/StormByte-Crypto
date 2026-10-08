@@ -43,10 +43,11 @@
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/pointers.hxx>
 
-#include <memory>
 #include <span>
-#include <string>
+#include <string_view>
 
 /**
  * @namespace StormByte
@@ -59,8 +60,8 @@ namespace StormByte {
 	 */
 	namespace Crypto {
 		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
+			 * @namespace StormByte::Crypto::Engine
+			 * @brief Private engines of the Crypto module.
 		 */
 		namespace Engine {
 			/**
@@ -73,7 +74,41 @@ namespace StormByte {
 				 * @brief Type-erased streaming signer.
 				 */
 				struct SignBox {
+					/**
+					 * @brief Construct the erased signing interface.
+					 */
+					SignBox() = default;
+
+					/**
+					 * @brief Erased signing state cannot be copied.
+					 * @param other Source backend.
+					 */
+					SignBox(const SignBox& other) = delete;
+
+					/**
+					 * @brief Erased signing state cannot be moved.
+					 * @param other Source backend.
+					 */
+					SignBox(SignBox&& other) = delete;
+
+					/**
+					 * @brief Destroy the concrete signer in its creating module.
+					 */
 					virtual ~SignBox() = default;
+
+					/**
+					 * @brief Erased signing state cannot be copy-assigned.
+					 * @param other Source backend.
+					 * @return This backend.
+					 */
+					SignBox& operator=(const SignBox& other) = delete;
+
+					/**
+					 * @brief Erased signing state cannot be move-assigned.
+					 * @param other Source backend.
+					 * @return This backend.
+					 */
+					SignBox& operator=(SignBox&& other) = delete;
 
 					/**
 					 * @brief Feed one message chunk.
@@ -87,7 +122,7 @@ namespace StormByte {
 					 * @param out Destination.
 					 * @return true on success.
 					 */
-					virtual bool Finalize(StormByte::BinaryData& out) = 0;
+					virtual bool Finalize(Safe::Binary& out) = 0;
 				};
 
 				/**
@@ -95,14 +130,48 @@ namespace StormByte {
 				 * @brief Type-erased streaming verifier. Call Begin first.
 				 */
 				struct VerifyBox {
+					/**
+					 * @brief Construct the erased verification interface.
+					 */
+					VerifyBox() = default;
+
+					/**
+					 * @brief Erased verification state cannot be copied.
+					 * @param other Source backend.
+					 */
+					VerifyBox(const VerifyBox& other) = delete;
+
+					/**
+					 * @brief Erased verification state cannot be moved.
+					 * @param other Source backend.
+					 */
+					VerifyBox(VerifyBox&& other) = delete;
+
+					/**
+					 * @brief Destroy the concrete verifier in its creating module.
+					 */
 					virtual ~VerifyBox() = default;
+
+					/**
+					 * @brief Erased verification state cannot be copy-assigned.
+					 * @param other Source backend.
+					 * @return This backend.
+					 */
+					VerifyBox& operator=(const VerifyBox& other) = delete;
+
+					/**
+					 * @brief Erased verification state cannot be move-assigned.
+					 * @param other Source backend.
+					 * @return This backend.
+					 */
+					VerifyBox& operator=(VerifyBox&& other) = delete;
 
 					/**
 					 * @brief Supply the signature before any Update.
 					 * @param signature Signature.
 					 * @return true on success.
 					 */
-					virtual bool Begin(const std::string& signature) = 0;
+					virtual bool Begin(std::string_view signature) = 0;
 
 					/**
 					 * @brief Feed one message chunk.
@@ -125,7 +194,7 @@ namespace StormByte {
 				 * @param box Engine.
 				 * @return true on success.
 				 */
-				bool SignSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<SignBox> box) noexcept;
+				bool SignSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<SignBox> box) noexcept;
 
 				/**
 				 * @brief Streaming sign.
@@ -134,7 +203,7 @@ namespace StormByte {
 				 * @param box Engine.
 				 * @return Consumer with the signature.
 				 */
-				Buffer::Consumer SignStream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<SignBox> box) noexcept;
+				Buffer::Consumer SignStream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<SignBox> box) noexcept;
 
 				/**
 				 * @brief One-shot verify.
@@ -143,7 +212,7 @@ namespace StormByte {
 				 * @param box Engine.
 				 * @return true if valid.
 				 */
-				bool VerifySpan(std::span<const std::byte> data, const std::string& signature, std::unique_ptr<VerifyBox> box) noexcept;
+				bool VerifySpan(std::span<const std::byte> data, std::string_view signature, Safe::Unique<VerifyBox> box) noexcept;
 
 				/**
 				 * @brief Streaming verify.
@@ -153,7 +222,7 @@ namespace StormByte {
 				 * @param box Engine.
 				 * @return true if valid.
 				 */
-				bool VerifyStream(Buffer::Consumer consumer, ReadMode mode, const std::string& signature, std::unique_ptr<VerifyBox> box) noexcept;
+				bool VerifyStream(Buffer::Consumer consumer, ReadMode mode, std::string_view signature, Safe::Unique<VerifyBox> box) noexcept;
 			}
 		}
 	}

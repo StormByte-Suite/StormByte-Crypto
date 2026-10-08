@@ -40,7 +40,9 @@
 
 #include <StormByte/crypto/crypter/symmetric/aes_gcm.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/api.hxx>
+
 #include <aes.h>
+#include <gcm.h>
 
 using namespace StormByte::Crypto::Crypter;
 

@@ -38,17 +38,17 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#include <StormByte/crypto/helpers/password_view.hxx>
-#include <StormByte/crypto/helpers/secure_wipe.hxx>
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/engine/signer/details.hxx>
+#include <StormByte/crypto/helpers/password_view.hxx>
+#include <StormByte/crypto/helpers/secure_wipe.hxx>
 #include <StormByte/crypto/random.hxx>
 #include <StormByte/crypto/signer/ed25519.hxx>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/pointers.hxx>
 
 #include <filters.h>
-#include <memory>
 #include <queue.h>
-#include <string>
 #include <string_view>
 #include <xed25519.h>
 
@@ -70,12 +70,19 @@ Generic::PointerType ED25519::Move() noexcept {
 }
 
 namespace {
+	/**
+	 * @struct Ed25519SignBox
+	 * @brief Ed25519 signing state owned and destroyed by Crypto.
+	 */
 	struct Ed25519SignBox final : StormByte::Crypto::Engine::Signer::SignBox {
-		CryptoPP::ed25519::Signer signer;
-		StormByte::BinaryData signature;
-		std::unique_ptr<CryptoPP::SignerFilter> filter;
-		bool ready = false;
+		CryptoPP::ed25519::Signer signer;	///< Native signer, destroyed after the filter.
+		StormByte::Safe::Unique<CryptoPP::SignerFilter> filter;	///< Owned signing filter.
+		bool ready = false;	///< Whether the private key was loaded.
 
+		/**
+		 * @brief Load a private key and create its signing filter.
+		 * @param priv DER private key, borrowed for construction.
+		 */
 		explicit Ed25519SignBox(const StormByte::Crypto::Secure::Password& priv) {
 			const unsigned char* privData = PasswordAccess::Data(priv);
 			const std::size_t privSize = PasswordAccess::Size(priv);
@@ -84,14 +91,49 @@ namespace {
 			CryptoPP::ByteQueue queue;
 			queue.Put(privData, privSize);
 			signer.AccessPrivateKey().Load(queue);
-			filter = std::make_unique<CryptoPP::SignerFilter>(
+			filter = StormByte::Safe::Unique<CryptoPP::SignerFilter>::MakePointer<CryptoPP::SignerFilter>(
 				StormByte::Crypto::RNG(),
-				signer,
-				new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(signature)
+				signer
 			);
 			ready = true;
 		}
 
+		/**
+		 * @brief Native signing state cannot be copied.
+		 * @param other Source state.
+		 */
+		Ed25519SignBox(const Ed25519SignBox& other) = delete;
+
+		/**
+		 * @brief Native signing state cannot be moved.
+		 * @param other Source state.
+		 */
+		Ed25519SignBox(Ed25519SignBox&& other) = delete;
+
+		/**
+		 * @brief Destroy the filter before its signer.
+		 */
+		~Ed25519SignBox() override = default;
+
+		/**
+		 * @brief Native signing state cannot be copy-assigned.
+		 * @param other Source state.
+		 * @return This state.
+		 */
+		Ed25519SignBox& operator=(const Ed25519SignBox& other) = delete;
+
+		/**
+		 * @brief Native signing state cannot be move-assigned.
+		 * @param other Source state.
+		 * @return This state.
+		 */
+		Ed25519SignBox& operator=(Ed25519SignBox&& other) = delete;
+
+		/**
+		 * @brief Feed one message chunk.
+		 * @param in Input bytes, borrowed for this update.
+		 * @return Whether the chunk was accepted.
+		 */
 		bool Update(std::span<const std::byte> in) override {
 			if (!ready || !filter)
 				return false;
@@ -105,12 +147,20 @@ namespace {
 			}
 		}
 
-		bool Finalize(StormByte::BinaryData& out) override {
+		/**
+		 * @brief Finish signing into Safe-owned storage.
+		 * @param out Signature destination.
+		 * @return Whether the signature was retrieved completely.
+		 */
+		bool Finalize(StormByte::Safe::Binary& out) override {
 			if (!ready || !filter)
 				return false;
 			try {
 				filter->MessageEnd();
-				out = std::move(signature);
+				out.resize(StormByte::ByteSize{filter->MaxRetrievable()});
+				const std::size_t outputSize = static_cast<std::size_t>(out.size());
+				if (filter->Get(reinterpret_cast<CryptoPP::byte*>(out.data()), outputSize) != outputSize)
+					return false;
 				filter.reset();
 				return true;
 			} catch (...) {
@@ -119,16 +169,22 @@ namespace {
 		}
 	};
 
+	/**
+	 * @struct Ed25519VerifyBox
+	 * @brief Ed25519 verification state owned and destroyed by Crypto.
+	 */
 	struct Ed25519VerifyBox final : StormByte::Crypto::Engine::Signer::VerifyBox {
-		CryptoPP::ed25519::Verifier verifier;
-		bool result = false;
-		std::unique_ptr<CryptoPP::SignatureVerificationFilter> filter;
-		bool ready = false;
+		CryptoPP::ed25519::Verifier verifier;	///< Native verifier, destroyed after the filter.
+		StormByte::Safe::Unique<CryptoPP::SignatureVerificationFilter> filter;	///< Owned verification filter.
+		bool ready = false;	///< Whether the public key was loaded.
 
+		/**
+		 * @brief Decode and load the public key.
+		 * @param pubKeyB64 Base64 public key, borrowed for construction.
+		 */
 		explicit Ed25519VerifyBox(const StormByte::Safe::String& pubKeyB64) {
-			const std::string pubKey { static_cast<std::string_view>(pubKeyB64) };
 			CryptoPP::SecByteBlock pubRaw =
-				StormByte::Crypto::Engine::KeyPair::DecodeSecBlockBase64(pubKey);
+				StormByte::Crypto::Engine::KeyPair::DecodeSecBlockBase64(pubKeyB64);
 			CryptoPP::ByteQueue queue;
 			queue.Put(pubRaw.data(), pubRaw.size());
 			SecureWipe(pubRaw);
@@ -136,17 +192,50 @@ namespace {
 			ready = true;
 		}
 
-		bool Begin(const std::string& signature) override {
+		/**
+		 * @brief Native verification state cannot be copied.
+		 * @param other Source state.
+		 */
+		Ed25519VerifyBox(const Ed25519VerifyBox& other) = delete;
+
+		/**
+		 * @brief Native verification state cannot be moved.
+		 * @param other Source state.
+		 */
+		Ed25519VerifyBox(Ed25519VerifyBox&& other) = delete;
+
+		/**
+		 * @brief Destroy the filter before its verifier.
+		 */
+		~Ed25519VerifyBox() override = default;
+
+		/**
+		 * @brief Native verification state cannot be copy-assigned.
+		 * @param other Source state.
+		 * @return This state.
+		 */
+		Ed25519VerifyBox& operator=(const Ed25519VerifyBox& other) = delete;
+
+		/**
+		 * @brief Native verification state cannot be move-assigned.
+		 * @param other Source state.
+		 * @return This state.
+		 */
+		Ed25519VerifyBox& operator=(Ed25519VerifyBox&& other) = delete;
+
+		/**
+		 * @brief Supply the signature before the message.
+		 * @param signature Signature bytes, borrowed for this call.
+		 * @return Whether verification was initialized.
+		 */
+		bool Begin(std::string_view signature) override {
 			if (!ready)
 				return false;
 			try {
-				filter = std::make_unique<CryptoPP::SignatureVerificationFilter>(
+				filter = StormByte::Safe::Unique<CryptoPP::SignatureVerificationFilter>::MakePointer<CryptoPP::SignatureVerificationFilter>(
 					verifier,
-					new CryptoPP::ArraySink(
-						reinterpret_cast<CryptoPP::byte*>(&result),
-						sizeof(result)),
-					CryptoPP::SignatureVerificationFilter::PUT_RESULT |
-						CryptoPP::SignatureVerificationFilter::SIGNATURE_AT_BEGIN
+					nullptr,
+					CryptoPP::SignatureVerificationFilter::SIGNATURE_AT_BEGIN
 				);
 				filter->Put(
 					reinterpret_cast<const CryptoPP::byte*>(signature.data()),
@@ -157,6 +246,11 @@ namespace {
 			}
 		}
 
+		/**
+		 * @brief Feed one message chunk.
+		 * @param in Input bytes, borrowed for this update.
+		 * @return Whether the chunk was accepted.
+		 */
 		bool Update(std::span<const std::byte> in) override {
 			if (!filter)
 				return false;
@@ -170,13 +264,18 @@ namespace {
 			}
 		}
 
+		/**
+		 * @brief Finish verification.
+		 * @return Whether the signature is valid.
+		 */
 		bool Finalize() override {
 			if (!filter)
 				return false;
 			try {
 				filter->MessageEnd();
+				const bool verified = filter->GetLastResult();
 				filter.reset();
-				return result;
+				return verified;
 			} catch (...) {
 				return false;
 			}
@@ -187,30 +286,43 @@ namespace {
 bool ED25519::DoSign(std::span<const std::byte> data, WriteOnly& output) const noexcept {
 	if (!m_keypair || !m_keypair->HasPrivateKey())
 		return false;
-	return Engine::Signer::SignSpan(
-		data, output,
-		std::make_unique<Ed25519SignBox>(*m_keypair->PrivateKey()));
+	try {
+		return Engine::Signer::SignSpan(
+			data, output,
+			StormByte::Safe::Unique<Engine::Signer::SignBox>::MakePointer<Ed25519SignBox>(*m_keypair->PrivateKey()));
+	} catch (...) {
+		return false;
+	}
 }
 
 Consumer ED25519::DoSign(Consumer consumer, ReadMode mode) const noexcept {
-	if (!m_keypair || !m_keypair->HasPrivateKey()) {
-		Producer producer;
-		producer.SetError();
-		return producer.Consumer();
+	if (m_keypair && m_keypair->HasPrivateKey()) {
+		try {
+			return Engine::Signer::SignStream(
+				std::move(consumer), mode,
+				StormByte::Safe::Unique<Engine::Signer::SignBox>::MakePointer<Ed25519SignBox>(*m_keypair->PrivateKey()));
+		} catch (...) {
+			consumer.Producer().SetError();
+			return consumer;
+		}
 	}
 
-	return Engine::Signer::SignStream(
-		std::move(consumer), mode,
-		std::make_unique<Ed25519SignBox>(*m_keypair->PrivateKey()));
+	Producer producer;
+	producer.SetError();
+	return producer.Consumer();
 }
 
 bool ED25519::DoVerify(std::span<const std::byte> data,
 	std::string_view signature) const noexcept {
 	if (!m_keypair)
 		return false;
-	return Engine::Signer::VerifySpan(
-		data, std::string{signature},
-		std::make_unique<Ed25519VerifyBox>(m_keypair->PublicKey()));
+	try {
+		return Engine::Signer::VerifySpan(
+			data, signature,
+			StormByte::Safe::Unique<Engine::Signer::VerifyBox>::MakePointer<Ed25519VerifyBox>(m_keypair->PublicKey()));
+	} catch (...) {
+		return false;
+	}
 }
 
 bool ED25519::DoVerify(Consumer consumer,
@@ -218,7 +330,11 @@ bool ED25519::DoVerify(Consumer consumer,
 	ReadMode mode) const noexcept {
 	if (!m_keypair)
 		return false;
-	return Engine::Signer::VerifyStream(
-		std::move(consumer), mode, std::string{signature},
-		std::make_unique<Ed25519VerifyBox>(m_keypair->PublicKey()));
+	try {
+		return Engine::Signer::VerifyStream(
+			std::move(consumer), mode, signature,
+			StormByte::Safe::Unique<Engine::Signer::VerifyBox>::MakePointer<Ed25519VerifyBox>(m_keypair->PublicKey()));
+	} catch (...) {
+		return false;
+	}
 }

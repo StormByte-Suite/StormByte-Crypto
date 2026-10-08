@@ -38,11 +38,10 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#include <StormByte/crypto/signer/ecdsa.hxx>
 #include <StormByte/crypto/engine/signer/api.hxx>
-#include <eccrypto.h>
+#include <StormByte/crypto/signer/ecdsa.hxx>
 
-#include <string>
+#include <eccrypto.h>
 #include <string_view>
 
 using namespace StormByte::Crypto::Signer;
@@ -71,10 +70,10 @@ Consumer ECDSA::DoSign(Consumer consumer, ReadMode mode) const noexcept {
 
 bool ECDSA::DoVerify(std::span<const std::byte> data, std::string_view signature) const noexcept {
 	return Engine::Signer::Verify<CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::Verifier, CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::PublicKey>(
-		data, std::string{signature}, m_keypair);
+		data, signature, m_keypair);
 }
 
 bool ECDSA::DoVerify(Consumer consumer, std::string_view signature, ReadMode mode) const noexcept {
 	return Engine::Signer::Verify<CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::Verifier, CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::PublicKey>(
-		consumer, std::string{signature}, m_keypair, mode);
+		consumer, signature, m_keypair, mode);
 }

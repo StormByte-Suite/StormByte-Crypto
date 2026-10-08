@@ -40,14 +40,15 @@
 
 #pragma once
 
-#include <StormByte/safe/clonable.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/clonable.hxx>
 #include <StormByte/safe/optional.hxx>
+#include <StormByte/safe/string.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
-#include <string_view>
+#include <utility>
 
 /**
  * @namespace StormByte
@@ -136,11 +137,11 @@ namespace StormByte {
 
 					/**
 					 * @brief Derive a shared secret from a peer public key.
-					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
+					 * @param peerPublicKey Peer public key as Base64, borrowed for this call.
 					 * @return Password on success, or empty.
 					 * @throws StormByte::Exception If Safe result storage cannot be created.
 					 */
-					virtual StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const = 0;
+					virtual StormByte::Safe::Optional<Secure::Password> Share(const StormByte::Safe::String& peerPublicKey) const = 0;
 
 				protected:
 					enum Type m_type;							///< Algorithm
@@ -162,7 +163,7 @@ namespace StormByte {
 			 * @return Object pointer, or nullptr if the pair is null or mismatched.
 			 * @note ECDH defaults to 256 bits. For secp384r1/secp521r1 construct @ref ECDH with the bit size.
 			 */
-			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Create(Type type, KeyPair::Generic::PointerType keypair) noexcept;
+			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Create(Type type, KeyPair::Generic::PointerType keypair);
 		}
 	}
 }

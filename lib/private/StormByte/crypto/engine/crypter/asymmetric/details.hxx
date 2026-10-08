@@ -43,47 +43,62 @@
 #include <StormByte/crypto/engine/crypter/details.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/pointers.hxx>
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <secblock.h>
 #include <span>
 
 /**
- * @namespace StormByte
- * @brief Root namespace of the StormByte suite.
+ * @namespace StormByte::Crypto::Engine::Crypter::Asymmetric
+ * @brief Private asymmetric crypter implementation.
  */
-namespace StormByte {
-	/**
-	 * @namespace StormByte::Crypto
-	 * @brief Crypto module of the StormByte suite.
-	 */
-	namespace Crypto {
-		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
-		 */
-		namespace Engine {
-			/**
-			 * @namespace StormByte::Crypto::Engine::Crypter
-			 * @brief Private crypter implementation.
-			 */
-			namespace Crypter {
-				/**
-				 * @namespace StormByte::Crypto::Engine::Crypter::Asymmetric
-				 * @brief Private asymmetric crypter implementation.
-				 */
-				namespace Asymmetric {
-					inline constexpr std::size_t kSymKeyLen = 32;	///< AES-256 key in hybrid envelopes
-					inline constexpr std::size_t kIvLen = 12;		///< GCM IV in hybrid envelopes
+namespace StormByte::Crypto::Engine::Crypter::Asymmetric {
+	inline constexpr std::size_t SymKeyLen = 32;	///< AES-256 key in hybrid envelopes.
+	inline constexpr std::size_t IvLen = 12;		///< GCM IV in hybrid envelopes.
 
 					/**
 					 * @struct PkBox
 					 * @brief Type-erased public/private transform.
 					 */
 					struct PkBox {
-						virtual ~PkBox() = default;
+		/**
+		 * @brief Construct a type-erased key transform.
+		 */
+		PkBox() = default;
+
+		/**
+		 * @brief Disable copying a key transform.
+		 * @param other Source transform.
+		 */
+		PkBox(const PkBox& other) = delete;
+
+		/**
+		 * @brief Disable moving a key transform.
+		 * @param other Source transform.
+		 */
+		PkBox(PkBox&& other) = delete;
+
+		/**
+		 * @brief Destroy the concrete key transform.
+		 */
+		virtual ~PkBox() = default;
+
+		/**
+		 * @brief Disable copy assignment.
+		 * @param other Source transform.
+		 * @return This transform.
+		 */
+		PkBox& operator=(const PkBox& other) = delete;
+
+		/**
+		 * @brief Disable move assignment.
+		 * @param other Source transform.
+		 * @return This transform.
+		 */
+		PkBox& operator=(PkBox&& other) = delete;
 
 						/**
 						 * @brief Transform raw bytes with the key.
@@ -91,7 +106,7 @@ namespace StormByte {
 						 * @param out Destination.
 						 * @return true on success.
 						 */
-						virtual bool Transform(std::span<const std::byte> in, StormByte::BinaryData& out) = 0;
+		virtual bool Transform(std::span<const std::byte> in, Safe::Binary& out) = 0;
 					};
 
 					/**
@@ -101,14 +116,14 @@ namespace StormByte {
 					 * @param out Destination.
 					 * @return true on success.
 					 */
-					bool WriteEnvelopeHeader(const StormByte::BinaryData& esk, const CryptoPP::SecByteBlock& iv, StormByte::BinaryData& out) noexcept;
+	bool WriteEnvelopeHeader(const Safe::Binary& esk, const CryptoPP::SecByteBlock& iv, Safe::Binary& out) noexcept;
 
 					/**
 					 * @brief Parse eskLen (4 bytes, big-endian).
 					 * @param lenBytes Length field.
 					 * @return Length, or 0 if size is not 4.
 					 */
-					std::uint32_t ParseEskLength(const StormByte::BinaryData& lenBytes) noexcept;
+	std::uint32_t ParseEskLength(const Safe::Binary& lenBytes) noexcept;
 
 					/**
 					 * @brief One-shot native PK transform.
@@ -117,7 +132,7 @@ namespace StormByte {
 					 * @param box Engine.
 					 * @return true on success.
 					 */
-					bool NativeProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<PkBox> box) noexcept;
+	bool NativeProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<PkBox> box) noexcept;
 
 					/**
 					 * @brief Streaming native PK. Each chunk is independent.
@@ -126,7 +141,7 @@ namespace StormByte {
 					 * @param box Engine.
 					 * @return Consumer with the result.
 					 */
-					Buffer::Consumer NativeProcessStream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<PkBox> box) noexcept;
+	Buffer::Consumer NativeProcessStream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<PkBox> box) noexcept;
 
 					/**
 					 * @brief One-shot hybrid encrypt. box wraps the session key.
@@ -135,7 +150,7 @@ namespace StormByte {
 					 * @param box Public-key box.
 					 * @return true on success.
 					 */
-					bool HybridEncryptSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<PkBox> box) noexcept;
+	bool HybridEncryptSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<PkBox> box) noexcept;
 
 					/**
 					 * @brief Streaming hybrid encrypt.
@@ -144,7 +159,7 @@ namespace StormByte {
 					 * @param box Public-key box.
 					 * @return Consumer with the envelope.
 					 */
-					Buffer::Consumer HybridEncryptStream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<PkBox> box) noexcept;
+	Buffer::Consumer HybridEncryptStream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<PkBox> box) noexcept;
 
 					/**
 					 * @brief One-shot hybrid decrypt. box unwraps the session key.
@@ -153,7 +168,7 @@ namespace StormByte {
 					 * @param box Private-key box.
 					 * @return true on success.
 					 */
-					bool HybridDecryptSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<PkBox> box) noexcept;
+	bool HybridDecryptSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<PkBox> box) noexcept;
 
 					/**
 					 * @brief Streaming hybrid decrypt.
@@ -162,9 +177,5 @@ namespace StormByte {
 					 * @param box Private-key box.
 					 * @return Consumer with the plaintext.
 					 */
-					Buffer::Consumer HybridDecryptStream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<PkBox> box) noexcept;
-				}
-			}
-		}
-	}
+	Buffer::Consumer HybridDecryptStream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<PkBox> box) noexcept;
 }

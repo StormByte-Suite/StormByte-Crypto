@@ -124,3 +124,5 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Compressor::Exception);

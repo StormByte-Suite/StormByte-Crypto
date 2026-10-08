@@ -43,8 +43,9 @@
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/binary.hxx>
+#include <StormByte/safe/pointers.hxx>
 
-#include <memory>
 #include <span>
 
 /**
@@ -58,7 +59,7 @@ namespace StormByte {
 	 */
 	namespace Crypto {
 		/**
-		 * @namespace StormByte::Crypto::Implementation
+			 * @namespace StormByte::Crypto::Engine
 		 * @brief Private implementation of the Crypto module.
 		 */
 		namespace Engine {
@@ -72,7 +73,23 @@ namespace StormByte {
 				 * @brief Type-erased chunk compress/decompress engine.
 				 */
 				struct StreamOps {
+					/**
+					 * @brief Construct an engine without codec state.
+					 */
+					StreamOps() = default;
+
+					StreamOps(const StreamOps&) = delete;
+
+					StreamOps(StreamOps&&) = delete;
+
+					/**
+					 * @brief Release codec state through its concrete implementation.
+					 */
 					virtual ~StreamOps() = default;
+
+					StreamOps& operator=(const StreamOps&) = delete;
+
+					StreamOps& operator=(StreamOps&&) = delete;
 
 					/**
 					 * @brief Feed one chunk and append output.
@@ -80,14 +97,14 @@ namespace StormByte {
 					 * @param out Accumulated output.
 					 * @return true on success.
 					 */
-					virtual bool Process(std::span<const std::byte> in, StormByte::BinaryData& out) = 0;
+					virtual bool Process(std::span<const std::byte> in, Safe::Binary& out) = 0;
 
 					/**
 					 * @brief Finish the stream and append remaining bytes.
 					 * @param out Accumulated output.
 					 * @return true on success.
 					 */
-					virtual bool Finalize(StormByte::BinaryData& out) = 0;
+					virtual bool Finalize(Safe::Binary& out) = 0;
 				};
 
 				/**
@@ -97,7 +114,7 @@ namespace StormByte {
 				 * @param ops Engine.
 				 * @return true on success.
 				 */
-				bool ProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, std::unique_ptr<StreamOps> ops) noexcept;
+				bool ProcessSpan(std::span<const std::byte> data, Buffer::WriteOnly& output, Safe::Unique<StreamOps> ops) noexcept;
 
 				/**
 				 * @brief Streaming compress/decompress.
@@ -106,7 +123,7 @@ namespace StormByte {
 				 * @param ops Engine.
 				 * @return Consumer with the result.
 				 */
-				Buffer::Consumer Stream(Buffer::Consumer consumer, ReadMode mode, std::unique_ptr<StreamOps> ops) noexcept;
+				Buffer::Consumer Stream(Buffer::Consumer consumer, ReadMode mode, Safe::Unique<StreamOps> ops) noexcept;
 			}
 		}
 	}

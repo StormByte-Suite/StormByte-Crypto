@@ -40,8 +40,9 @@
 
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/engine/compressor/details.hxx>
+#include <StormByte/safe/thread.hxx>
 
-#include <thread>
+#include <utility>
 
 using StormByte::Buffer::Consumer;
 using StormByte::Buffer::Producer;
@@ -49,27 +50,27 @@ using StormByte::Buffer::WriteOnly;
 using StormByte::Crypto::ReadMode;
 
 namespace {
-	constexpr unsigned long long kChunkSize = 4096;
+	constexpr StormByte::ByteSize ChunkSize{4096};
 }
 
 bool StormByte::Crypto::Engine::Compressor::ProcessSpan(
 	std::span<const std::byte> data,
 	WriteOnly& output,
-	std::unique_ptr<StreamOps> ops) noexcept {
+	StormByte::Safe::Unique<StreamOps> ops) noexcept {
 	if (!ops)
 		return false;
 	try {
-		StormByte::BinaryData total;
-		StormByte::BinaryData part;
+		StormByte::Safe::Binary total;
+		StormByte::Safe::Binary part;
 		if (!ops->Process(data, part))
 			return false;
 		if (!part.empty())
-			total.insert(total.end(), part.begin(), part.end());
+			total.append(part.span());
 		part.clear();
 		if (!ops->Finalize(part))
 			return false;
 		if (!part.empty())
-			total.insert(total.end(), part.begin(), part.end());
+			total.append(part.span());
 		if (!total.empty() && !output.Write(std::move(total)))
 			return false;
 		return true;
@@ -81,25 +82,25 @@ bool StormByte::Crypto::Engine::Compressor::ProcessSpan(
 Consumer StormByte::Crypto::Engine::Compressor::Stream(
 	Consumer consumer,
 	ReadMode mode,
-	std::unique_ptr<StreamOps> ops) noexcept {
+	StormByte::Safe::Unique<StreamOps> ops) noexcept {
 	Producer producer;
 	if (!ops) {
 		producer.SetError();
 		return producer.Consumer();
 	}
 
-	std::thread([consumer = std::move(consumer), producer, ops = std::move(ops), mode]() mutable {
+	try {
+		StormByte::Safe::Thread([consumer = std::move(consumer), producer, ops = std::move(ops), mode]() mutable {
 		try {
 			while (!consumer.EoF()) {
 				const StormByte::ByteSize available = consumer.Available();
 				if (available == StormByte::ByteSize{0}) {
-					std::this_thread::yield();
+					StormByte::Safe::this_thread::yield();
 					continue;
 				}
 
-				const StormByte::ByteSize chunk{kChunkSize};
-				const StormByte::ByteSize toRead = (available < chunk) ? available : chunk;
-				StormByte::BinaryData data;
+				const StormByte::ByteSize toRead = (available < ChunkSize) ? available : ChunkSize;
+				StormByte::Safe::Binary data;
 				const bool ok = (mode == ReadMode::Copy)
 					? consumer.Read(toRead, data)
 					: consumer.Extract(toRead, data);
@@ -108,8 +109,8 @@ Consumer StormByte::Crypto::Engine::Compressor::Stream(
 					return;
 				}
 
-				StormByte::BinaryData out;
-				if (!ops->Process(std::span<const std::byte>(data.data(), data.size()), out)) {
+				StormByte::Safe::Binary out;
+				if (!ops->Process(data.span(), out)) {
 					producer.SetError();
 					return;
 				}
@@ -120,7 +121,7 @@ Consumer StormByte::Crypto::Engine::Compressor::Stream(
 				}
 			}
 
-			StormByte::BinaryData out;
+			StormByte::Safe::Binary out;
 			if (!ops->Finalize(out)) {
 				producer.SetError();
 				return;
@@ -135,6 +136,9 @@ Consumer StormByte::Crypto::Engine::Compressor::Stream(
 		} catch (...) {
 			producer.SetError();
 		}
-	}).detach();
+		}).detach();
+	} catch (...) {
+		producer.SetError();
+	}
 	return producer.Consumer();
 }

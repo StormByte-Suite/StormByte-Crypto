@@ -42,9 +42,9 @@
 
 #include <StormByte/crypto/exception.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/safe/string.hxx>
 
 #include <format>
-#include <string>
 #include <string_view>
 #include <utility>
 
@@ -136,7 +136,7 @@ namespace StormByte {
 					template<typename... Args>
 					explicit Exception(Path child, std::format_string<Args...> fmt, Args&&... args)
 						: Crypto::Exception(
-							Path{std::string("Secure.") + std::string(child.text)},
+							Path{Safe::String{"Secure."}.append(child.text)},
 							fmt,
 							std::forward<Args>(args)...) {}
 
@@ -147,7 +147,7 @@ namespace StormByte {
 					 */
 					explicit Exception(Path child, std::string_view message)
 						: Crypto::Exception(
-							Path{std::string("Secure.") + std::string(child.text)},
+							Path{Safe::String{"Secure."}.append(child.text)},
 							message) {}
 			};
 
@@ -213,3 +213,6 @@ namespace StormByte {
 		}
 	}
 }
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secure::Exception);
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::Secure::VaultException);

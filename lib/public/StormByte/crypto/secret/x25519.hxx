@@ -43,8 +43,6 @@
 #include <StormByte/crypto/keypair/x25519.hxx>
 #include <StormByte/crypto/secret/generic.hxx>
 
-#include <string_view>
-
 /**
  * @namespace StormByte
  * @brief Root namespace of the StormByte suite.
@@ -125,20 +123,22 @@ namespace StormByte {
 
 					/**
 					 * @brief Derive a shared secret.
-					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
+					 * @param peerPublicKey Peer public key as Base64, borrowed for this call.
 					 * @return Password on success, or empty.
+					 * @throws StormByte::Exception If Safe result storage cannot be created.
 					 */
-					StormByte::Safe::Optional<Secure::Password> Share(std::string_view peerPublicKey) const override;
+					StormByte::Safe::Optional<Secure::Password> Share(const StormByte::Safe::String& peerPublicKey) const override;
 
 					/**
 					 * @brief Derive a shared secret without an instance.
 					 * @param keypair Local keypair (needs private key).
-					 * @param peerPublicKey Peer public key as Base64. Accepts String and std::string via string_view.
+					 * @param peerPublicKey Peer public key as Base64, borrowed for this call.
 					 * @return Password on success, or empty.
+					 * @throws StormByte::Exception If Safe result storage cannot be created.
 					 */
 					static StormByte::Safe::Optional<Secure::Password> DeriveSharedSecret(
 						KeyPair::Generic::PointerType keypair,
-						std::string_view peerPublicKey);
+						const StormByte::Safe::String& peerPublicKey);
 			};
 		}
 	}

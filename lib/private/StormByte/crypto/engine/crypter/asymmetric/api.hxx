@@ -43,292 +43,306 @@
 #include <StormByte/crypto/engine/crypter/asymmetric/details.hxx>
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
-#include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/random.hxx>
-#include <StormByte/crypto/typedefs.hxx>
-#include <StormByte/crypto/visibility.h>
+#include <StormByte/crypto/secure/password.hxx>
+#include <StormByte/exception.hxx>
 
+#include <exception>
 #include <filters.h>
-#include <memory>
+#include <limits>
 #include <span>
+#include <utility>
 
 /**
- * @namespace StormByte
- * @brief Root namespace of the StormByte suite.
+ * @namespace StormByte::Crypto::Engine::Crypter::Asymmetric
+ * @brief Private asymmetric crypter implementation.
  */
-namespace StormByte {
+namespace StormByte::Crypto::Engine::Crypter::Asymmetric {
 	/**
-	 * @namespace StormByte::Crypto
-	 * @brief Crypto module of the StormByte suite.
+	 * @class TransformBox
+	 * @brief Safe-owned key and Crypto++ public-key transform.
+	 * @tparam TransformT Crypto++ encryptor or decryptor.
+	 * @tparam KeyT Crypto++ key type.
+	 * @tparam Encrypt Whether to load the public rather than private key.
 	 */
-	namespace Crypto {
-		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
-		 */
-		namespace Engine {
+	template<typename TransformT, typename KeyT, bool Encrypt>
+	class TransformBox final : public PkBox {
+		public:
 			/**
-			 * @namespace StormByte::Crypto::Engine::Crypter
-			 * @brief Private crypter implementation.
+			 * @brief Load and validate the required key from a keypair.
+			 * @param keypair Keypair containing the required key.
+			 * @throws StormByte::Exception Safe allocation failed.
+			 * @throws CryptoPP::Exception Backend validation failed.
 			 */
-			namespace Crypter {
-				/**
-				 * @namespace StormByte::Crypto::Engine::Crypter::Asymmetric
-				 * @brief Private asymmetric crypter implementation.
-				 */
-				namespace Asymmetric {
-					namespace {
-						/**
-						 * @struct EncryptBox
-						 * @brief Public-key encryptor as PkBox.
-						 * @tparam CryptorT Crypto++ encryptor type.
-						 * @tparam KeyT Crypto++ public key type.
-						 */
-						template<typename CryptorT, typename KeyT>
-						struct EncryptBox final : PkBox {
-							std::unique_ptr<KeyT> key;	///< Loaded public key
+			explicit TransformBox(StormByte::Crypto::KeyPair::Generic::PointerType keypair) {
+				if (!keypair)
+					return;
+				if constexpr (Encrypt)
+					Load(keypair->PublicKey());
+				else if (keypair->HasPrivateKey())
+					Load(*keypair->PrivateKey());
+			}
 
-							/**
-							 * @brief Load the public key from a KeyPair.
-							 * @param keypair Key pair.
-							 */
-							explicit EncryptBox(StormByte::Crypto::KeyPair::Generic::PointerType keypair) {
-								if (!keypair)
-									return;
-								auto keyRes = KeyPair::DeserializeKey<KeyT>(keypair->PublicKey());
-								if (!keyRes)
-									return;
-								key = std::make_unique<KeyT>(std::move(*keyRes));
-								if (!key->Validate(RNG(), 3))
-									key.reset();
-							}
+			/**
+			 * @brief Load and validate a private DER key.
+			 * @param privateKey DER key stored in a password.
+			 * @throws StormByte::Exception Safe allocation failed.
+			 * @throws CryptoPP::Exception Backend validation failed.
+			 */
+			explicit TransformBox(const Secure::Password& privateKey) requires (!Encrypt) {
+				Load(privateKey);
+			}
 
-							/**
-							 * @brief Encrypt one blob.
-							 * @param in Input.
-							 * @param out Destination.
-							 * @return true on success.
-							 */
-							bool Transform(std::span<const std::byte> in, StormByte::BinaryData& out) override {
-								if (!key)
-									return false;
-								try {
-									CryptorT encryptor(*key);
-									CryptoPP::PK_EncryptorFilter pkf(
-										RNG(), encryptor,
-										new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(out)
-									);
-									pkf.Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
-									pkf.MessageEnd();
-									return true;
-								} catch (...) {
-									return false;
-								}
-							}
-						};
+			/**
+			 * @brief Disable copying key ownership.
+			 * @param other Source transform.
+			 */
+			TransformBox(const TransformBox& other) = delete;
 
-						/**
-						 * @struct DecryptBox
-						 * @brief Private-key decryptor as PkBox.
-						 * @tparam DecryptorT Crypto++ decryptor type.
-						 * @tparam KeyT Crypto++ private key type.
-						 */
-						template<typename DecryptorT, typename KeyT>
-						struct DecryptBox final : PkBox {
-							std::unique_ptr<KeyT> key;	///< Loaded private key
+			/**
+			 * @brief Disable moving a transform with backend state.
+			 * @param other Source transform.
+			 */
+			TransformBox(TransformBox&& other) = delete;
 
-							/**
-							 * @brief Load the private key from a KeyPair.
-							 * @param keypair Key pair with private key.
-							 */
-							explicit DecryptBox(StormByte::Crypto::KeyPair::Generic::PointerType keypair) {
-								if (!keypair || !keypair->HasPrivateKey())
-									return;
-								auto keyRes = KeyPair::DeserializeKey<KeyT>(*keypair->PrivateKey());
-								if (!keyRes)
-									return;
-								key = std::make_unique<KeyT>(std::move(*keyRes));
-								if (!key->Validate(RNG(), 3))
-									key.reset();
-							}
+			/**
+			 * @brief Destroy the key through its Safe owner.
+			 */
+			~TransformBox() override = default;
 
-							/**
-							 * @brief Load the private key from a Password.
-							 * @param privKey DER private key.
-							 */
-							explicit DecryptBox(const Secure::Password& privKey) {
-								auto keyRes = KeyPair::DeserializeKey<KeyT>(privKey);
-								if (!keyRes)
-									return;
-								key = std::make_unique<KeyT>(std::move(*keyRes));
-								if (!key->Validate(RNG(), 3))
-									key.reset();
-							}
+			/**
+			 * @brief Disable copy assignment.
+			 * @param other Source transform.
+			 * @return This transform.
+			 */
+			TransformBox& operator=(const TransformBox& other) = delete;
 
-							/**
-							 * @brief Decrypt one blob.
-							 * @param in Input.
-							 * @param out Destination.
-							 * @return true on success.
-							 */
-							bool Transform(std::span<const std::byte> in, StormByte::BinaryData& out) override {
-								if (!key)
-									return false;
-								try {
-									DecryptorT decryptor(*key);
-									CryptoPP::PK_DecryptorFilter pkdf(
-										RNG(), decryptor,
-										new CryptoPP::StringSinkTemplate<StormByte::BinaryData>(out)
-									);
-									pkdf.Put(reinterpret_cast<const CryptoPP::byte*>(in.data()), in.size_bytes());
-									pkdf.MessageEnd();
-									return true;
-								} catch (...) {
-									return false;
-								}
-							}
-						};
+			/**
+			 * @brief Disable move assignment.
+			 * @param other Source transform.
+			 * @return This transform.
+			 */
+			TransformBox& operator=(TransformBox&& other) = delete;
+
+			/**
+			 * @brief Transform one blob and append the result only after success.
+			 * @param input Borrowed input bytes.
+			 * @param output Safe destination.
+			 * @return Whether the key and transformation succeeded.
+			 */
+			bool Transform(std::span<const std::byte> input, Safe::Binary& output) override {
+				if (!m_key)
+					return false;
+				try {
+					TransformT transform(*m_key);
+					if constexpr (Encrypt) {
+						CryptoPP::PK_EncryptorFilter filter(RNG(), transform);
+						filter.Put(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size_bytes());
+						filter.MessageEnd();
+						return Drain(filter, output);
 					}
-
-					/**
-					 * @brief Native one-shot encrypt.
-					 * @tparam CryptorT Crypto++ encryptor type.
-					 * @tparam PublicKeyT Crypto++ public key type.
-					 * @param data Input.
-					 * @param keypair Key pair.
-					 * @param output Destination.
-					 * @return true on success.
-					 */
-					template<typename CryptorT, typename PublicKeyT>
-					bool EncryptAsymmetric(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
-						return NativeProcessSpan(
-							data, output,
-							std::make_unique<EncryptBox<CryptorT, PublicKeyT>>(std::move(keypair)));
+					else {
+						CryptoPP::PK_DecryptorFilter filter(RNG(), transform);
+						filter.Put(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size_bytes());
+						filter.MessageEnd();
+						return Drain(filter, output);
 					}
-
-					/**
-					 * @brief Native streaming encrypt.
-					 * @tparam CryptorT Crypto++ encryptor type.
-					 * @tparam PublicKeyT Crypto++ public key type.
-					 * @param consumer Input consumer.
-					 * @param keypair Key pair.
-					 * @param mode Copy or move.
-					 * @return Consumer with the ciphertext.
-					 */
-					template<typename CryptorT, typename PublicKeyT>
-					Buffer::Consumer EncryptAsymmetric(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
-						return NativeProcessStream(
-							std::move(consumer), mode,
-							std::make_unique<EncryptBox<CryptorT, PublicKeyT>>(std::move(keypair)));
-					}
-
-					/**
-					 * @brief Hybrid one-shot encrypt (AES-GCM + PK-wrapped session key).
-					 * @tparam EncryptorT Crypto++ encryptor type.
-					 * @tparam PublicKeyT Crypto++ public key type.
-					 * @param data Input.
-					 * @param keypair Key pair.
-					 * @param output Destination.
-					 * @return true on success.
-					 */
-					template<typename EncryptorT, typename PublicKeyT>
-					bool EncryptAsymmetricBlockEnvelope(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
-						return HybridEncryptSpan(
-							data, output,
-							std::make_unique<EncryptBox<EncryptorT, PublicKeyT>>(std::move(keypair)));
-					}
-
-					/**
-					 * @brief Hybrid streaming encrypt.
-					 * @tparam EncryptorT Crypto++ encryptor type.
-					 * @tparam PublicKeyT Crypto++ public key type.
-					 * @param consumer Input consumer.
-					 * @param keypair Key pair.
-					 * @param mode Copy or move.
-					 * @return Consumer with the envelope.
-					 */
-					template<typename EncryptorT, typename PublicKeyT>
-					Buffer::Consumer EncryptAsymmetricBlockEnvelope(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
-						return HybridEncryptStream(
-							std::move(consumer), mode,
-							std::make_unique<EncryptBox<EncryptorT, PublicKeyT>>(std::move(keypair)));
-					}
-
-					/**
-					 * @brief Native one-shot decrypt.
-					 * @tparam DecryptorT Crypto++ decryptor type.
-					 * @tparam PrivateKeyT Crypto++ private key type.
-					 * @param data Input.
-					 * @param keypair Key pair with private key.
-					 * @param output Destination.
-					 * @return true on success.
-					 */
-					template<typename DecryptorT, typename PrivateKeyT>
-					bool DecryptAsymmetric(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
-						return NativeProcessSpan(
-							data, output,
-							std::make_unique<DecryptBox<DecryptorT, PrivateKeyT>>(std::move(keypair)));
-					}
-
-					/**
-					 * @brief Native streaming decrypt.
-					 * @tparam DecryptorT Crypto++ decryptor type.
-					 * @tparam PrivateKeyT Crypto++ private key type.
-					 * @param consumer Input consumer.
-					 * @param keypair Key pair with private key.
-					 * @param mode Copy or move.
-					 * @return Consumer with the plaintext, or error if no private key.
-					 */
-					template<typename DecryptorT, typename PrivateKeyT>
-					Buffer::Consumer DecryptAsymmetric(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
-						if (!keypair || !keypair->HasPrivateKey()) {
-							Buffer::Producer producer;
-							producer.SetError();
-							return producer.Consumer();
-						}
-						return NativeProcessStream(
-							std::move(consumer), mode,
-							std::make_unique<DecryptBox<DecryptorT, PrivateKeyT>>(*keypair->PrivateKey()));
-					}
-
-					/**
-					 * @brief Hybrid one-shot decrypt.
-					 * @tparam DecryptorT Crypto++ decryptor type.
-					 * @tparam PrivateKeyT Crypto++ private key type.
-					 * @param data Input.
-					 * @param keypair Key pair with private key.
-					 * @param output Destination.
-					 * @return true on success.
-					 */
-					template<typename DecryptorT, typename PrivateKeyT>
-					bool DecryptAsymmetricBlockEnvelope(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
-						return HybridDecryptSpan(
-							data, output,
-							std::make_unique<DecryptBox<DecryptorT, PrivateKeyT>>(std::move(keypair)));
-					}
-
-					/**
-					 * @brief Hybrid streaming decrypt.
-					 * @tparam DecryptorT Crypto++ decryptor type.
-					 * @tparam PrivateKeyT Crypto++ private key type.
-					 * @param consumer Input consumer.
-					 * @param keypair Key pair with private key.
-					 * @param mode Copy or move.
-					 * @return Consumer with the plaintext, or error if no private key.
-					 */
-					template<typename DecryptorT, typename PrivateKeyT>
-					Buffer::Consumer DecryptAsymmetricBlockEnvelope(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
-						if (!keypair || !keypair->HasPrivateKey()) {
-							Buffer::Producer producer;
-							producer.SetError();
-							return producer.Consumer();
-						}
-						return HybridDecryptStream(
-							std::move(consumer), mode,
-							std::make_unique<DecryptBox<DecryptorT, PrivateKeyT>>(*keypair->PrivateKey()));
-					}
+				} catch (const StormByte::Exception&) {
+					return false;
+				} catch (const std::exception&) {
+					return false;
+				} catch (...) {
+					return false;
 				}
 			}
+
+		private:
+			/**
+			 * @brief Deserialize and validate a backend key on Base's heap.
+			 * @tparam MaterialT Serialized key representation.
+			 * @param material Serialized key bytes or text.
+			 * @throws StormByte::Exception Safe allocation failed.
+			 * @throws CryptoPP::Exception Backend validation failed.
+			 */
+			template<typename MaterialT>
+			void Load(const MaterialT& material) {
+				auto key = KeyPair::DeserializeKey<KeyT>(material);
+				if (!key || !key->Validate(RNG(), 3))
+					return;
+				m_key = Safe::Unique<KeyT>::template MakePointer<KeyT>(std::move(*key));
+			}
+
+			/**
+			 * @brief Drain the backend-owned queue without transferring attachment ownership.
+			 * @param filter Completed Crypto++ filter.
+			 * @param output Safe destination to append to.
+			 * @return Whether the queued length fits in the destination.
+			 * @throws StormByte::Exception Safe allocation failed.
+			 * @throws CryptoPP::Exception Reading the backend queue failed.
+			 */
+			static bool Drain(CryptoPP::BufferedTransformation& filter, Safe::Binary& output) {
+				const auto length = filter.MaxRetrievable();
+				const std::size_t offset = output.size();
+				if (length > std::numeric_limits<std::size_t>::max() - offset)
+					return false;
+				output.resize(ByteSize{offset + static_cast<std::size_t>(length)});
+				if (length != 0)
+					filter.Get(reinterpret_cast<CryptoPP::byte*>(output.data() + offset), static_cast<std::size_t>(length));
+				return true;
+			}
+
+			Safe::Unique<KeyT> m_key;	///< Loaded and validated backend key.
+	};
+
+	/**
+	 * @brief Public-key encryptor with Safe key ownership.
+	 * @tparam CryptorT Crypto++ encryptor type.
+	 * @tparam KeyT Crypto++ public key type.
+	 */
+	template<typename CryptorT, typename KeyT>
+	using EncryptBox = TransformBox<CryptorT, KeyT, true>;
+
+	/**
+	 * @brief Private-key decryptor with Safe key ownership.
+	 * @tparam DecryptorT Crypto++ decryptor type.
+	 * @tparam KeyT Crypto++ private key type.
+	 */
+	template<typename DecryptorT, typename KeyT>
+	using DecryptBox = TransformBox<DecryptorT, KeyT, false>;
+
+	/**
+	 * @brief Allocate a concrete transform through the base Safe owner.
+	 * @tparam BoxT Concrete public-key transform.
+	 * @tparam Args Constructor argument types.
+	 * @param args Constructor arguments.
+	 * @return Owned transform, or an empty owner on failure.
+	 */
+	template<typename BoxT, typename... Args>
+	Safe::Unique<PkBox> MakeBox(Args&&... args) noexcept {
+		try {
+			return Safe::Unique<PkBox>::template MakePointer<BoxT>(std::forward<Args>(args)...);
+		} catch (const StormByte::Exception&) {
+			return {};
+		} catch (const std::exception&) {
+			return {};
+		} catch (...) {
+			return {};
 		}
+	}
+
+	/**
+	 * @brief Native one-shot encrypt.
+	 * @tparam CryptorT Crypto++ encryptor type.
+	 * @tparam PublicKeyT Crypto++ public key type.
+	 * @param data Input bytes.
+	 * @param keypair Keypair containing a public key.
+	 * @param output Destination.
+	 * @return Whether encryption succeeded.
+	 */
+	template<typename CryptorT, typename PublicKeyT>
+	bool EncryptAsymmetric(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
+		return NativeProcessSpan(data, output, MakeBox<EncryptBox<CryptorT, PublicKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Native streaming encrypt with independently transformed chunks.
+	 * @tparam CryptorT Crypto++ encryptor type.
+	 * @tparam PublicKeyT Crypto++ public key type.
+	 * @param consumer Input consumer.
+	 * @param keypair Keypair containing a public key.
+	 * @param mode Copy or move input bytes.
+	 * @return Consumer with ciphertext or an error.
+	 */
+	template<typename CryptorT, typename PublicKeyT>
+	Buffer::Consumer EncryptAsymmetric(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
+		return NativeProcessStream(std::move(consumer), mode, MakeBox<EncryptBox<CryptorT, PublicKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Hybrid one-shot encrypt using AES-GCM and a wrapped session key.
+	 * @tparam EncryptorT Crypto++ encryptor type.
+	 * @tparam PublicKeyT Crypto++ public key type.
+	 * @param data Input bytes.
+	 * @param keypair Keypair containing a public key.
+	 * @param output Destination.
+	 * @return Whether encryption succeeded.
+	 */
+	template<typename EncryptorT, typename PublicKeyT>
+	bool EncryptAsymmetricBlockEnvelope(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
+		return HybridEncryptSpan(data, output, MakeBox<EncryptBox<EncryptorT, PublicKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Hybrid streaming encrypt.
+	 * @tparam EncryptorT Crypto++ encryptor type.
+	 * @tparam PublicKeyT Crypto++ public key type.
+	 * @param consumer Input consumer.
+	 * @param keypair Keypair containing a public key.
+	 * @param mode Copy or move input bytes.
+	 * @return Consumer with an encrypted envelope or an error.
+	 */
+	template<typename EncryptorT, typename PublicKeyT>
+	Buffer::Consumer EncryptAsymmetricBlockEnvelope(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
+		return HybridEncryptStream(std::move(consumer), mode, MakeBox<EncryptBox<EncryptorT, PublicKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Native one-shot decrypt.
+	 * @tparam DecryptorT Crypto++ decryptor type.
+	 * @tparam PrivateKeyT Crypto++ private key type.
+	 * @param data Ciphertext bytes.
+	 * @param keypair Keypair containing a private key.
+	 * @param output Destination.
+	 * @return Whether decryption succeeded.
+	 */
+	template<typename DecryptorT, typename PrivateKeyT>
+	bool DecryptAsymmetric(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
+		return NativeProcessSpan(data, output, MakeBox<DecryptBox<DecryptorT, PrivateKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Native streaming decrypt with independently transformed chunks.
+	 * @tparam DecryptorT Crypto++ decryptor type.
+	 * @tparam PrivateKeyT Crypto++ private key type.
+	 * @param consumer Input consumer.
+	 * @param keypair Keypair containing a private key.
+	 * @param mode Copy or move input bytes.
+	 * @return Consumer with plaintext or an error.
+	 */
+	template<typename DecryptorT, typename PrivateKeyT>
+	Buffer::Consumer DecryptAsymmetric(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
+		if (!keypair || !keypair->HasPrivateKey())
+			return NativeProcessStream(std::move(consumer), mode, {});
+		return NativeProcessStream(std::move(consumer), mode, MakeBox<DecryptBox<DecryptorT, PrivateKeyT>>(*keypair->PrivateKey()));
+	}
+
+	/**
+	 * @brief Hybrid one-shot decrypt.
+	 * @tparam DecryptorT Crypto++ decryptor type.
+	 * @tparam PrivateKeyT Crypto++ private key type.
+	 * @param data Encrypted envelope bytes.
+	 * @param keypair Keypair containing a private key.
+	 * @param output Destination.
+	 * @return Whether decryption succeeded.
+	 */
+	template<typename DecryptorT, typename PrivateKeyT>
+	bool DecryptAsymmetricBlockEnvelope(std::span<const std::byte> data, StormByte::Crypto::KeyPair::Generic::PointerType keypair, Buffer::WriteOnly& output) noexcept {
+		return HybridDecryptSpan(data, output, MakeBox<DecryptBox<DecryptorT, PrivateKeyT>>(std::move(keypair)));
+	}
+
+	/**
+	 * @brief Hybrid streaming decrypt.
+	 * @tparam DecryptorT Crypto++ decryptor type.
+	 * @tparam PrivateKeyT Crypto++ private key type.
+	 * @param consumer Input consumer.
+	 * @param keypair Keypair containing a private key.
+	 * @param mode Copy or move input bytes.
+	 * @return Consumer with plaintext or an error.
+	 */
+	template<typename DecryptorT, typename PrivateKeyT>
+	Buffer::Consumer DecryptAsymmetricBlockEnvelope(Buffer::Consumer consumer, StormByte::Crypto::KeyPair::Generic::PointerType keypair, ReadMode mode) noexcept {
+		if (!keypair || !keypair->HasPrivateKey())
+			return HybridDecryptStream(std::move(consumer), mode, {});
+		return HybridDecryptStream(std::move(consumer), mode, MakeBox<DecryptBox<DecryptorT, PrivateKeyT>>(*keypair->PrivateKey()));
 	}
 }

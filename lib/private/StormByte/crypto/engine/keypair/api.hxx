@@ -40,179 +40,155 @@
 
 #pragma once
 
-#include <StormByte/crypto/helpers/password_view.hxx>
-#include <StormByte/crypto/helpers/secure_wipe.hxx>
 #include <StormByte/crypto/engine/keypair/details.hxx>
-#include <StormByte/crypto/secure/password.hxx>
+#include <StormByte/crypto/helpers/password_view.hxx>
 #include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/optional.hxx>
+#include <StormByte/safe/pointers.hxx>
 #include <StormByte/safe/string.hxx>
 
 #include <base64.h>
-#include <filters.h>
-#include <memory>
 #include <queue.h>
-#include <string>
 #include <string_view>
+#include <utility>
 
 /**
- * @namespace StormByte
- * @brief Root namespace of the StormByte suite.
+ * @namespace StormByte::Crypto::Engine::KeyPair
+ * @brief Private keypair implementation.
  */
-namespace StormByte {
+namespace StormByte::Crypto::Engine::KeyPair {
 	/**
-	 * @namespace StormByte::Crypto
-	 * @brief Crypto module of the StormByte suite.
+	 * @brief Serialize a Crypto++ key to Base64.
+	 * @tparam KeyT Key type.
+	 * @param key Key.
+	 * @return Base64, or empty on failure.
 	 */
-	namespace Crypto {
-		/**
-		 * @namespace StormByte::Crypto::Implementation
-		 * @brief Private implementation of the Crypto module.
-		 */
-		namespace Engine {
-			/**
-			 * @namespace StormByte::Crypto::Engine::KeyPair
-			 * @brief Private keypair implementation.
-			 */
-			namespace KeyPair {
-				/**
-				 * @brief Serialize a Crypto++ key to Base64.
-				 * @tparam KeyT Key type.
-				 * @param key Key.
-				 * @return Base64, or empty on failure.
-				 */
-				template<typename KeyT>
-				std::string SerializeKey(const KeyT& key) noexcept {
-					try {
-						std::string keyString;
-						CryptoPP::ByteQueue queue;
-						key.Save(queue);
-						CryptoPP::Base64Encoder encoder(new CryptoPP::StringSink(keyString), false);
-						queue.CopyTo(encoder);
-						encoder.MessageEnd();
-						return keyString;
-					} catch (...) {
-						return {};
-					}
-				}
+	template<typename KeyT>
+	Safe::String SerializeKey(const KeyT& key) noexcept {
+		try {
+			Safe::String keyString;
+			CryptoPP::ByteQueue queue;
+			key.Save(queue);
+			CryptoPP::Base64Encoder encoder(nullptr, false);
+			queue.CopyTo(encoder);
+			encoder.MessageEnd();
+			keyString.resize(encoder.MaxRetrievable());
+			if (!keyString.empty())
+				encoder.Get(reinterpret_cast<CryptoPP::byte*>(keyString.data()), keyString.size());
+			return keyString;
+		} catch (...) {
+			return {};
+		}
+	}
 
-				/**
-				 * @brief Serialize a Crypto++ key to DER inside a Password.
-				 * @tparam KeyT Key type.
-				 * @param key Key.
-				 * @return Password, or empty on failure.
-				 */
-				template<typename KeyT>
-				Secure::Password SerializeKeyBinary(const KeyT& key) noexcept {
-					try {
-						CryptoPP::ByteQueue queue;
-						key.Save(queue);
-						const size_t n = queue.CurrentSize();
-						CryptoPP::SecByteBlock der(n);
-						queue.Get(der.data(), der.size());
-						Secure::Password result(der.data(), StormByte::ByteSize{der.size()});
-						Helpers::SecureWipe(der);
-						return result;
-					} catch (...) {
-						return Secure::Password(static_cast<const void*>(nullptr), StormByte::ByteSize{0});
-					}
-				}
+	/**
+	 * @brief Serialize a Crypto++ key to DER inside a Password.
+	 * @tparam KeyT Key type.
+	 * @param key Key.
+	 * @return Password, or empty on failure.
+	 */
+	template<typename KeyT>
+	Secure::Password SerializeKeyBinary(const KeyT& key) noexcept {
+		try {
+			CryptoPP::ByteQueue queue;
+			key.Save(queue);
+			CryptoPP::SecByteBlock der(queue.CurrentSize());
+			queue.Get(der.data(), der.size());
+			Secure::Password result(der.data(), StormByte::ByteSize{der.size()});
+			CryptoPP::SecureWipeBuffer(der.data(), der.size());
+			return result;
+		} catch (...) {
+			return Secure::Password(static_cast<const void*>(nullptr), StormByte::ByteSize{0});
+		}
+	}
 
-				/**
-				 * @brief Deserialize a key from Base64.
-				 * @tparam KeyT Key type.
-				 * @param keyString Base64.
-				 * @return Shared key, or nullptr.
-				 */
-				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const std::string& keyString) noexcept {
-					try {
-						KeyT key;
-						CryptoPP::ByteQueue queue;
-						CryptoPP::StringSource ss(
-							keyString, true,
-							new CryptoPP::Base64Decoder(new CryptoPP::Redirector(queue)));
-						key.Load(queue);
-						return std::make_shared<KeyT>(std::move(key));
-					} catch (...) {
-						return nullptr;
-					}
-				}
+	/**
+	 * @brief Deserialize a key from Base64.
+	 * @tparam KeyT Key type.
+	 * @param keyString Base64.
+	 * @return Shared key, or nullptr.
+	 * @note Private backend owner only, not a certified Safe value. The concrete
+	 *       destructor is bound in the creating module; Crypto, Base and the
+	 *       backend must remain loaded until the last owner is released.
+	 */
+	template<typename KeyT>
+	Safe::Shared<KeyT> DeserializeKey(std::string_view keyString) noexcept {
+		try {
+			auto key = Safe::MakeShared<KeyT>();
+			CryptoPP::ByteQueue queue;
+			CryptoPP::Base64Decoder decoder;
+			decoder.Put(reinterpret_cast<const CryptoPP::byte*>(keyString.data()), keyString.size());
+			decoder.MessageEnd();
+			decoder.TransferTo(queue);
+			key->Load(queue);
+			return key;
+		} catch (...) {
+			return nullptr;
+		}
+	}
 
-				/**
-				 * @brief Deserialize a key from a public @ref StormByte::Safe::String.
-				 * @tparam KeyT Key type.
-				 * @param keyString Base64 public key.
-				 * @return Shared key, or nullptr.
-				 */
-				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const StormByte::Safe::String& keyString) noexcept {
-					return DeserializeKey<KeyT>(std::string(static_cast<std::string_view>(keyString)));
-				}
+	/**
+	 * @brief Deserialize a key from DER in a Password.
+	 * @tparam KeyT Key type.
+	 * @param keyBinary Password.
+	 * @return Shared key, or nullptr.
+	 */
+	template<typename KeyT>
+	Safe::Shared<KeyT> DeserializeKey(const Secure::Password& keyBinary) noexcept {
+		try {
+			const unsigned char* data = Helpers::PasswordAccess::Data(keyBinary);
+			const std::size_t length = Helpers::PasswordAccess::Size(keyBinary);
+			if (!data || length == 0)
+				return nullptr;
 
-				/**
-				 * @brief Deserialize a key from DER in a Password.
-				 * @tparam KeyT Key type.
-				 * @param keyBinary Password.
-				 * @return Shared key, or nullptr.
-				 */
-				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const Secure::Password& keyBinary) noexcept {
-					try {
-						const unsigned char* data = Helpers::PasswordAccess::Data(keyBinary);
-						const std::size_t n = Helpers::PasswordAccess::Size(keyBinary);
-						if (!data || n == 0)
-							return nullptr;
+			auto key = Safe::MakeShared<KeyT>();
+			CryptoPP::ByteQueue queue;
+			queue.Put(data, length);
+			key->Load(queue);
+			return key;
+		} catch (...) {
+			return nullptr;
+		}
+	}
 
-						KeyT key;
-						CryptoPP::ByteQueue queue;
-						queue.Put(data, n);
-						key.Load(queue);
-						return std::make_shared<KeyT>(std::move(key));
-					} catch (...) {
-						return nullptr;
-					}
-				}
+	/**
+	 * @brief Deserialize from optional Password.
+	 * @tparam KeyT Key type.
+	 * @param keyBinary Optional Password.
+	 * @return Shared key, or nullptr.
+	 */
+	template<typename KeyT>
+	Safe::Shared<KeyT> DeserializeKey(const Safe::Optional<Secure::Password>& keyBinary) noexcept {
+		if (!keyBinary.has_value())
+			return nullptr;
+		return DeserializeKey<KeyT>(*keyBinary);
+	}
 
-				/**
-				 * @brief Deserialize from optional Password.
-				 * @tparam KeyT Key type.
-				 * @param keyBinary Optional Password.
-				 * @return Shared key, or nullptr.
-				 */
-				template<typename KeyT>
-				std::shared_ptr<KeyT> DeserializeKey(const StormByte::Safe::Optional<Secure::Password>& keyBinary) noexcept {
-					if (!keyBinary.has_value())
-						return nullptr;
-					const Secure::Password privateKey = *keyBinary;
-					return DeserializeKey<KeyT>(privateKey);
-				}
+	/**
+	 * @brief Generate an Agreement keypair. Private stays in Password.
+	 * @tparam KeyPairT Public wrapper type.
+	 * @tparam AgreementT Crypto++ agreement type.
+	 * @tparam CtorArgs Agreement constructor argument types.
+	 * @param args Arguments forwarded to the agreement constructor.
+	 * @return Shared KeyPairT, or nullptr.
+	 */
+	template<typename KeyPairT, typename AgreementT, typename... CtorArgs>
+	typename KeyPairT::PointerType AgreementGenerateKeyPair(CtorArgs&&... args) noexcept {
+		try {
+			AgreementT agreement(std::forward<CtorArgs>(args)...);
+			CryptoPP::SecByteBlock privateKey(agreement.PrivateKeyLength());
+			CryptoPP::SecByteBlock publicKey(agreement.PublicKeyLength());
+			agreement.GenerateKeyPair(RNG(), privateKey, publicKey);
 
-				/**
-				 * @brief Generate an Agreement keypair. Private stays in Password.
-				 * @tparam KeyPairT Public wrapper type.
-				 * @tparam AgreementT Crypto++ agreement type.
-				 * @return Shared KeyPairT, or nullptr.
-				 */
-				template<typename KeyPairT, typename AgreementT, typename... CtorArgs>
-				typename KeyPairT::PointerType AgreementGenerateKeyPair(CtorArgs&&... args) noexcept {
-					try {
-						AgreementT agr(std::forward<CtorArgs>(args)...);
-						CryptoPP::SecByteBlock priv(agr.PrivateKeyLength());
-						CryptoPP::SecByteBlock pub(agr.PublicKeyLength());
-						agr.GenerateKeyPair(RNG(), priv, pub);
+			auto publicString = EncodeSecBlockBase64(publicKey);
+			Secure::Password privatePassword = PasswordFromSecBlock(privateKey);
+			CryptoPP::SecureWipeBuffer(publicKey.data(), publicKey.size());
 
-						auto pubStr = EncodeSecBlockBase64(pub);
-						Secure::Password privPwd = PasswordFromSecBlock(priv);
-						Helpers::SecureWipe(pub);
-
-						return KeyPairT::template MakePointer<KeyPairT>(std::move(pubStr), std::move(privPwd));
-					} catch (...) {
-						return nullptr;
-					}
-				}
-			}
+			return KeyPairT::template MakePointer<KeyPairT>(std::move(publicString), std::move(privatePassword));
+		} catch (...) {
+			return nullptr;
 		}
 	}
 }
