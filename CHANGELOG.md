@@ -22,7 +22,7 @@ If you landed here from a release link and have not read the tree:
 
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.0...HEAD
 
-## [2.0.0] - 2026-10-08
+## [2.0.0] - 2026-10-10
 
 ### Changed
 - **Breaking**: Port public APIs to StormByte Base, Buffer and System 2.0.0.
