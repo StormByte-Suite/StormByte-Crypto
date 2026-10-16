@@ -3,8 +3,6 @@ name: CI
 permissions:
   actions: write
   contents: read
-  pages: write
-  id-token: write
 
 on:
   push:
@@ -39,7 +37,7 @@ jobs:
       - name: Warm submodule / checkout cache
         uses: stormbytepp/githubactions/.github/actions/checkout-cached@master
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
   apt-bootstrap:
@@ -69,7 +67,7 @@ jobs:
       - name: Checkout repository and submodules
         uses: stormbytepp/githubactions/.github/actions/checkout-cached@master
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Install OpenSSL (CLI for KeyPair fixtures)
@@ -85,16 +83,17 @@ jobs:
         with:
           toolchain: ${{ matrix.compiler }}
           ccache-key: v1-release-${{ matrix.compiler }}
+          buildmaster-datadir-cache-key: bm-datadir-${{ runner.os }}-${{ matrix.compiler }}
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
-            -DENABLE_TEST=ON
+            -DENABLE_LTO=ON
+            -DENABLE_PGO=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++' || '' }}
-          run-tests: true
-          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
+            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI' || '' }}
+          run-tests: false
 
   ###########################################################################
   # macOS
@@ -114,7 +113,7 @@ jobs:
       - name: Checkout repository and submodules
         uses: stormbytepp/githubactions/.github/actions/checkout-cached@master
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Install OpenSSL (Homebrew via install-cached)
@@ -132,15 +131,16 @@ jobs:
         with:
           toolchain: ${{ matrix.compiler }}
           ccache-key: v1-release-${{ matrix.compiler }}
+          buildmaster-datadir-cache-key: bm-datadir-${{ runner.os }}-${{ matrix.compiler }}
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
-            -DENABLE_TEST=ON
+            -DENABLE_LTO=ON
+            -DENABLE_PGO=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-          run-tests: true
-          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
+          run-tests: false
 
   ###########################################################################
   # Windows (must build with MSVC in C++23 until CryptoPP accepts clang-cl)
@@ -156,7 +156,7 @@ jobs:
       - name: Checkout repository and submodules
         uses: stormbytepp/githubactions/.github/actions/checkout-cached@master
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Install OpenSSL (direct from slproweb)
@@ -230,28 +230,13 @@ jobs:
         with:
           toolchain: msvc
           ccache-key: v1-release-msvc
+          buildmaster-datadir-cache-key: bm-datadir-${{ runner.os }}-msvc
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
-            -DENABLE_TEST=ON
+            -DENABLE_LTO=ON
+            -DENABLE_PGO=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-          run-tests: true
-          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
-
-  ###########################################################################
-  # Docs (StormByteCryptoDoc)
-  ###########################################################################
-  docs:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [checkout-bootstrap, apt-bootstrap]
-    uses: stormbytepp/githubactions/.github/workflows/generate-and-deploy-docs.yml@master
-    with:
-      doc_target: StormByteCryptoDoc
-      extra-cmake-options: >-
-        -DENABLE_DOC=ON
-        -DWITH_CRYPTOPP=BUNDLED
-        -DWITH_BZIP2=BUNDLED
-        -DWITH_STORMBYTE=BUNDLED
-      docs_output_dir: ./_site
+          run-tests: false

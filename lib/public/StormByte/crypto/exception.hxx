@@ -45,7 +45,6 @@
 #include <StormByte/safe/string.hxx>
 #include <StormByte/type_traits/safe.hxx>
 
-#include <format>
 #include <string_view>
 #include <utility>
 
@@ -63,8 +62,7 @@ namespace StormByte {
 		 * @class Exception
 		 * @brief Root exception for Crypto. `what()` is `StormByte.Crypto: message`.
 		 *
-		 * Forwards the format and the arguments. Does not format.
-		 * A child segment is prepended under `Crypto`.
+		 * This type applies the `Crypto` segment. A further segment is a `StormByte::Exception::Path` (`Hasher`, `Crypter`). The body does not include the path. Literal `{}` are replaced by @ref StormByte::Safe::String::ReplaceToken. This does not call `std::format`. The destructor is defined in this module.
 		 */
 		class STORMBYTE_CRYPTO_PUBLIC Exception: public StormByte::Exception {
 			public:
@@ -73,21 +71,21 @@ namespace StormByte {
 				 * @{
 				 */
 				/**
-				 * @brief Format under `StormByte.Crypto`.
-				 * @tparam Args Format argument types.
-				 * @param fmt Format string.
-				 * @param args Format arguments.
+				 * @brief Replace literal `{}` under `StormByte.Crypto`.
+				 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+				 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+				 * @param args Replacements. One per token, in order.
 				 */
 				template<typename... Args>
-				explicit Exception(std::format_string<Args...> fmt, Args&&... args)
-					: StormByte::Exception(Path{"Crypto"}, fmt, std::forward<Args>(args)...) {}
+					requires (sizeof...(Args) >= 1)
+				explicit Exception(std::string_view pattern, Args&&... args)
+					: Exception(static_cast<std::string_view>(Safe::String::ReplaceToken(pattern, std::forward<Args>(args)...))) {}
 
 				/**
 				 * @brief Plain message under `StormByte.Crypto`.
 				 * @param message Exception text. Not a format string.
 				 */
-				explicit Exception(std::string_view message)
-					: StormByte::Exception(Path{"Crypto"}, "{}", message) {}
+				explicit Exception(std::string_view message);
 
 				/**
 				 * @brief Copy constructor.
@@ -123,29 +121,23 @@ namespace StormByte {
 
 			protected:
 				/**
-				 * @brief Format under StormByte.Crypto plus the child segment.
-				 * @tparam Args Format argument types.
-				 * @param child Segment under `Crypto`.
-				 * @param fmt Format string.
-				 * @param args Format arguments.
+				 * @brief Replace literal `{}` under `StormByte.Crypto` plus the child segment.
+				 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+				 * @param child Segment under `Crypto`. Not the full path.
+				 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+				 * @param args Replacements. One per token, in order.
 				 */
 				template<typename... Args>
-				explicit Exception(Path child, std::format_string<Args...> fmt, Args&&... args)
-					: StormByte::Exception(
-						Path{Safe::String{"Crypto."}.append(child.text)},
-						fmt,
-						std::forward<Args>(args)...) {}
+					requires (sizeof...(Args) >= 1)
+				explicit Exception(StormByte::Exception::Path child, std::string_view pattern, Args&&... args)
+					: Exception(child, static_cast<std::string_view>(Safe::String::ReplaceToken(pattern, std::forward<Args>(args)...))) {}
 
 				/**
-				 * @brief Plain message under StormByte.Crypto plus the child segment.
-				 * @param child Segment under `Crypto`.
+				 * @brief Plain message under `StormByte.Crypto` plus the child segment.
+				 * @param child Segment under `Crypto`. Not the full path.
 				 * @param message Exception text. Not a format string.
 				 */
-				explicit Exception(Path child, std::string_view message)
-					: StormByte::Exception(
-						Path{Safe::String{"Crypto."}.append(child.text)},
-						"{}",
-						message) {}
+				explicit Exception(StormByte::Exception::Path child, std::string_view message);
 		};
 	}
 }

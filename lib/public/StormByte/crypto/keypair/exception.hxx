@@ -43,7 +43,6 @@
 #include <StormByte/crypto/exception.hxx>
 #include <StormByte/crypto/visibility.h>
 
-#include <format>
 #include <string_view>
 #include <utility>
 
@@ -73,14 +72,15 @@ namespace StormByte {
 					 * @{
 					 */
 					/**
-					 * @brief Format under `StormByte.Crypto.KeyPair`.
-					 * @tparam Args Format argument types.
-					 * @param fmt Format string.
-					 * @param args Format arguments.
+					 * @brief Replace literal `{}` under `StormByte.Crypto.KeyPair`.
+					 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+					 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+					 * @param args Replacements. One per token, in order.
 					 */
 					template<typename... Args>
-					explicit Exception(std::format_string<Args...> fmt, Args&&... args)
-						: Crypto::Exception(Path{"KeyPair"}, fmt, std::forward<Args>(args)...) {}
+						requires (sizeof...(Args) >= 1)
+					explicit Exception(std::string_view pattern, Args&&... args)
+						: Crypto::Exception(StormByte::Exception::Path{"KeyPair"}, pattern, std::forward<Args>(args)...) {}
 
 					/**
 					 * @brief Plain message under `StormByte.Crypto.KeyPair`.

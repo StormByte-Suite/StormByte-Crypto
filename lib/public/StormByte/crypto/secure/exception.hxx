@@ -44,7 +44,7 @@
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/string.hxx>
 
-#include <format>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -67,8 +67,7 @@ namespace StormByte {
 			 * @class Exception
 			 * @brief Root exception for Secure. `what()` is `StormByte.Crypto.Secure: message`.
 			 *
-			 * Forwards the format and the arguments. Does not format.
-			 * A child segment is prepended under `Secure`.
+			 * This type applies the `Secure` segment under `Crypto`. A further segment is a `StormByte::Exception::Path` (`Vault`). Literal `{}` are replaced by @ref StormByte::Safe::String::ReplaceToken. This does not call `std::format`.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Exception: public Crypto::Exception {
 				public:
@@ -77,14 +76,15 @@ namespace StormByte {
 					 * @{
 					 */
 					/**
-					 * @brief Format under `StormByte.Crypto.Secure`.
-					 * @tparam Args Format argument types.
-					 * @param fmt Format string.
-					 * @param args Format arguments.
+					 * @brief Replace literal `{}` under `StormByte.Crypto.Secure`.
+					 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+					 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+					 * @param args Replacements. One per token, in order.
 					 */
 					template<typename... Args>
-					explicit Exception(std::format_string<Args...> fmt, Args&&... args)
-						: Crypto::Exception(Path{"Secure"}, fmt, std::forward<Args>(args)...) {}
+						requires (sizeof...(Args) >= 1)
+					explicit Exception(std::string_view pattern, Args&&... args)
+						: Crypto::Exception(StormByte::Exception::Path{"Secure"}, pattern, std::forward<Args>(args)...) {}
 
 					/**
 					 * @brief Plain message under `StormByte.Crypto.Secure`.
@@ -127,27 +127,28 @@ namespace StormByte {
 
 				protected:
 					/**
-					 * @brief Format under StormByte.Crypto.Secure plus the child segment.
-					 * @tparam Args Format argument types.
-					 * @param child Segment under `Secure`.
-					 * @param fmt Format string.
-					 * @param args Format arguments.
+					 * @brief Replace literal `{}` under `StormByte.Crypto.Secure` plus the child segment.
+					 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+					 * @param child Segment under `Secure`. Not the full path.
+					 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+					 * @param args Replacements. One per token, in order.
 					 */
 					template<typename... Args>
-					explicit Exception(Path child, std::format_string<Args...> fmt, Args&&... args)
+						requires (sizeof...(Args) >= 1)
+					explicit Exception(StormByte::Exception::Path child, std::string_view pattern, Args&&... args)
 						: Crypto::Exception(
-							Path{Safe::String{"Secure."}.append(child.text)},
-							fmt,
+							StormByte::Exception::Path{std::string("Secure.").append(child.text)},
+							pattern,
 							std::forward<Args>(args)...) {}
 
 					/**
-					 * @brief Plain message under StormByte.Crypto.Secure plus the child segment.
-					 * @param child Segment under `Secure`.
+					 * @brief Plain message under `StormByte.Crypto.Secure` plus the child segment.
+					 * @param child Segment under `Secure`. Not the full path.
 					 * @param message Exception text. Not a format string.
 					 */
-					explicit Exception(Path child, std::string_view message)
+					explicit Exception(StormByte::Exception::Path child, std::string_view message)
 						: Crypto::Exception(
-							Path{Safe::String{"Secure."}.append(child.text)},
+							StormByte::Exception::Path{std::string("Secure.").append(child.text)},
 							message) {}
 			};
 
@@ -162,14 +163,15 @@ namespace StormByte {
 					 * @{
 					 */
 					/**
-					 * @brief Format under `StormByte.Crypto.Secure.Vault`.
-					 * @tparam Args Format argument types.
-					 * @param fmt Format string.
-					 * @param args Format arguments.
+					 * @brief Replace literal `{}` under `StormByte.Crypto.Secure.Vault`.
+					 * @tparam Args Views, numbers, or types that convert to `std::string`. A number uses `std::to_string`.
+					 * @param pattern Body with literal `{}` tokens. Not a `std::format` string.
+					 * @param args Replacements. One per token, in order.
 					 */
 					template<typename... Args>
-					explicit VaultException(std::format_string<Args...> fmt, Args&&... args)
-						: Exception(Path{"Vault"}, fmt, std::forward<Args>(args)...) {}
+						requires (sizeof...(Args) >= 1)
+					explicit VaultException(std::string_view pattern, Args&&... args)
+						: Exception(StormByte::Exception::Path{"Vault"}, pattern, std::forward<Args>(args)...) {}
 
 					/**
 					 * @brief Plain message under `StormByte.Crypto.Secure.Vault`.

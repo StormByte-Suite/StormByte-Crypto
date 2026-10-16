@@ -40,7 +40,26 @@
 
 #include <StormByte/crypto/exception.hxx>
 
+#include <string>
+
 using namespace StormByte::Crypto;
+
+namespace {
+	std::string FullPath(std::string_view extra) {
+		std::string path = "Crypto";
+		if (!extra.empty()) {
+			path.push_back('.');
+			path.append(extra);
+		}
+		return path;
+	}
+}
+
+Exception::Exception(std::string_view message)
+	: StormByte::Exception(StormByte::Exception::Path{"Crypto"}, message) {}
+
+Exception::Exception(StormByte::Exception::Path child, std::string_view message)
+	: StormByte::Exception(StormByte::Exception::Path{FullPath(child.text)}, message) {}
 
 Exception::Exception(const Exception& other) = default;
 
