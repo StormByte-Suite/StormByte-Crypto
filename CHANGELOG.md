@@ -36,6 +36,10 @@ If you landed here from a release link and have not read the tree:
 - **Breaking:** Crypto exceptions no longer format with `std::format`. A message with arguments replaces literal `{}` through `Safe::String::ReplaceToken`, the same rule as Base 2.1.0. `what()` stays `StormByte.Crypto: message`, and a child segment is only the part under `Crypto` (`StormByte.Crypto.Hasher`, `StormByte.Crypto.Secure.Vault`).
 - Bumped project version to 2.0.2.
 
+### Fixed
+
+- The libc++ CI and release configure no longer pass the PBKDF2 test define inside `-DCMAKE_CXX_FLAGS`. The space split it into a second CMake `-D` with no value. `CXXFLAGS` already carries `-DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI`.
+
 [2.0.2]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.1...2.0.2
 
 ## [2.0.1] - 2026-10-13

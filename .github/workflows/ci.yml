@@ -92,7 +92,7 @@ jobs:
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI' || '' }}
+            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++' || '' }}
           run-tests: false
 
   ###########################################################################
