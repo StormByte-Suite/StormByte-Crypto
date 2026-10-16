@@ -35,10 +35,7 @@ If you landed here from a release link and have not read the tree:
 - Requires [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.1.0) 2.1.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.2, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.2 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.0.2. Each is a release archive (`stormbyte_component_url`) linked with `BACKEND=binary`. Base, Logger and System are declared here because Buffer no longer vendors them. The archive matches this OS and C++ runtime: `libstdc++` or `libc++` on Linux and macOS, no runtime suffix on Windows. Doxygen include path is `${BUILDMASTER_INSTALL_INCLUDEDIR}`.
 - **Breaking:** Crypto exceptions no longer format with `std::format`. A message with arguments replaces literal `{}` through `Safe::String::ReplaceToken`, the same rule as Base 2.1.0. `what()` stays `StormByte.Crypto: message`, and a child segment is only the part under `Crypto` (`StormByte.Crypto.Hasher`, `StormByte.Crypto.Secure.Vault`).
 - Bumped project version to 2.0.2.
-
-### Fixed
-
-- The libc++ CI and release configure no longer pass the PBKDF2 test define inside `-DCMAKE_CXX_FLAGS`. The space split it into a second CMake `-D` with no value. `CXXFLAGS` already carries `-DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI`.
+- Symmetric key derivation is always PBKDF2-HMAC-SHA256 with 600000 iterations. `STORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI` is gone, and CI no longer compiles with it.
 
 [2.0.2]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.1...2.0.2
 

@@ -56,17 +56,10 @@
  * @brief Private symmetric crypter implementation.
  */
 namespace StormByte::Crypto::Engine::Crypter::Symmetric {
-#ifdef STORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI
-	/**
-	 * @brief Reduced PBKDF2 work factor for explicitly insecure CI configurations.
-	 */
-	inline constexpr unsigned int Pbkdf2Iterations = 1000;
-#else
 	/**
 	 * @brief Production PBKDF2 work factor.
 	 */
 	inline constexpr unsigned int Pbkdf2Iterations = 600000;
-#endif
 
 	/**
 	 * @brief Derive a key with PBKDF2-HMAC.

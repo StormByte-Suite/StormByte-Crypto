@@ -13,9 +13,6 @@ on:
 
 env:
   BUILD_TYPE: Release
-  # Faster PBKDF2 in unit tests (library reads this define)
-  # Linux/mac: plain -D ; Windows job overrides with /D for MSVC
-  CXXFLAGS: -DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -149,8 +146,6 @@ jobs:
     needs: [checkout-bootstrap]
     runs-on: windows-latest
     name: windows-msvc
-    env:
-      CXXFLAGS: /DSTORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI
 
     steps:
       - name: Checkout repository and submodules
