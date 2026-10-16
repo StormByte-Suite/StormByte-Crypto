@@ -1,9 +1,6 @@
 [submodule "Bzip2"]
 	path = thirdparty/Bzip2/cmake-port/src
 	url = https://github.com/libarchive/bzip2.git
-[submodule "StormByte Suite - Buffer"]
-	path = thirdparty/StormByte/buffer/src
-	url = https://github.com/StormByte-Suite/StormByte-Buffer.git
 [submodule "Build Master"]
 	path = buildmaster
 	url = https://github.com/StormByte-Suite/StormByte-BuildMaster.git
