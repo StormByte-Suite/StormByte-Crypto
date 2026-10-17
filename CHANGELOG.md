@@ -20,17 +20,14 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-### Added
-
-- Release archives include `THIRD-PARTY` (not `THIRDPARTY`: on Windows and macOS that name is the same path as the `thirdparty/` directory, so the file never landed in those zips), `COPYING.CryptoPP` and `COPYING.bzip2`. Crypto++ 8.9.0 (`843d74c7`) and libbzip2 1.0.8 (`6a8690fc`) are compiled into the shared library. The notices are the upstream texts of those commits. Base, Buffer, Logger and System stay separate shared libraries.
-
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...HEAD
 
-## [2.0.2] - 2026-10-16
+## [2.0.2] - 2026-10-17
 
 ### Added
 
 - `ENABLE_PGO` and `ENABLE_LTO`. Profile-guided optimization trains in `pgo-instr` and installs this build. Link-time optimization follows `ENABLE_LTO` (default ON) for every build type. Both apply to Crypto. Base, Buffer, Logger and System are not rebuilt. Windows stays MSVC because Crypto++ does not build with clang-cl.
+- Release archives include `THIRD-PARTY` (not `THIRDPARTY`: on Windows and macOS that name is the same path as the `thirdparty/` directory, so the file never landed in those zips), `COPYING.CryptoPP` and `COPYING.bzip2`. Crypto++ 8.9.0 (`843d74c7`) and libbzip2 1.0.8 (`6a8690fc`) are compiled into the shared library. The notices are the upstream texts of those commits. Base, Buffer, Logger and System stay separate shared libraries.
 
 ### Changed
 
