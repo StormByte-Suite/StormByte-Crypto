@@ -89,7 +89,7 @@ jobs:
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++' || '' }}
+            ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_CXX_STANDARD_LIBRARIES=-stdlib=libc++' || '' }}
           run-tests: false
 
   ###########################################################################
