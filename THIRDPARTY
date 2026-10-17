@@ -1,0 +1,97 @@
+This file is a notice for the binary archive of StormByte-Crypto. It is not a
+license and it does not change LICENSE.
+
+Original source of StormByte-Crypto is dual-licensed. LICENSE is that grant:
+GNU Lesser General Public License v3.0 or later, or a commercial license
+from the copyright holder. COPYING.LGPLv3 is the LGPL text. The commercial
+license does not replace the license of any third-party code compiled into
+the binary. Neither grant adds a patent license.
+
+This archive does not include a kit of relocatable object files. The way
+provided to rebuild or replace this library is to compile its corresponding
+source. That source is the Git tag of the release that contains this
+archive. The release page that hosts the zip also hosts the source archives
+GitHub generates for that tag:
+
+  https://github.com/StormByte-Suite/StormByte-Crypto/releases/tag/2.0.2
+
+Rebuilding that tag produces a replacement shared library (libStormByte-Crypto).
+Substituting that shared library is the relink method provided with this
+binary. The C++ runtime is not in this archive. The dynamic loader still
+has to provide libc++, libstdc++ or the MSVC CRT, whichever this build was
+linked against.
+
+Compiled into this shared library
+---------------------------------
+
+The release builds compile both libraries below into libStormByte-Crypto.
+They are not installed as libraries of their own. A build configured with
+WITH_CRYPTOPP=SYSTEM or WITH_BZIP2=SYSTEM does not contain that library,
+and this notice does not describe that configuration.
+
+1. Crypto++ 8.9.0
+
+  What it is     the cryptographic implementation used by this module.
+                 Public headers do not expose CryptoPP::
+  How it is used compiled into libStormByte-Crypto
+  Source         https://github.com/weidai11/cryptopp
+                 commit 843d74c7c97f9e19a615b8ff3c0ca06599ca501b
+                 ("Prepare for Crypto++ 8.9 release")
+  License        COPYING.CryptoPP, which is License.txt of that commit,
+                 copied verbatim
+
+  License.txt places individual files in the public domain and licenses the
+  compilation under the Boost Software License 1.0. The Boost Software
+  License's own condition about keeping the license text applies to copies
+  that are not solely compiler-generated object code. The text is included
+  here anyway.
+
+  poly1305.cpp is compiled into this library on every platform. Its header
+  carries the CRYPTOGAMS copyright (2006-2017, appro@openssl.org) and the
+  redistribution conditions that License.txt also reproduces. Those
+  conditions require the notice to travel with a binary distribution.
+  COPYING.CryptoPP is that notice, as upstream wrote it, including where
+  the upstream file stops.
+
+  The 32-bit ARM CRYPTOGAMS assembly named in License.txt (aes_armv4.S,
+  sha1_armv4.S, sha256_armv4.S) is not built for the published archives
+  (Windows x64, Linux x64, macOS arm64). The zlib, gzip and deflate sources
+  in that tree are Wei Dai's public-domain reimplementation. They are not
+  the zlib library and they are not libbzip2.
+
+  On Windows the build applies
+  thirdparty/Crypto++/0001-msvc-drop-stdext.patch. The patch avoids
+  stdext in integer.cpp and zdeflate.cpp. It adds no source file and it
+  does not change License.txt.
+
+2. libbzip2 1.0.8
+
+  What it is     the bzip2 compression used by this module's compressor
+  How it is used the library sources are compiled into libStormByte-Crypto.
+                 The bzip2 program is not built and is not shipped
+  Source         https://github.com/libarchive/bzip2
+                 commit 6a8690fc8d26c815e798c588f796eabe9d684cf0
+                 ("Prepare for 1.0.8 release")
+  Copyright      Julian R Seward, 1996-2019
+  License        COPYING.bzip2, the LICENSE file of that commit, copied
+                 verbatim
+
+  That license asks that the origin of the software not be misrepresented
+  and that Julian Seward's name not be used to endorse a product. The
+  acknowledgment above is the one this distribution gives.
+
+Linked at run time, not compiled in
+------------------------------------
+
+These are other shared libraries. They are not inside this file. SDS, in
+particular, is compiled into StormByte Base, not into StormByte-Crypto.
+Each library has its own release archive and its own THIRDPARTY.
+
+  - StormByte Base 2.1.0 — https://github.com/StormByte-Suite/StormByte/releases/tag/2.1.0
+  - StormByte-Buffer 2.0.2 — https://github.com/StormByte-Suite/StormByte-Buffer/releases/tag/2.0.2
+  - StormByte-Logger 2.0.2 — https://github.com/StormByte-Suite/StormByte-Logger/releases/tag/2.0.2
+  - StormByte System 2.0.2 — https://github.com/StormByte-Suite/StormByte-System/releases/tag/2.0.2
+
+A static rebuild can fold those libraries, and anything they themselves
+embed, into one binary. That binary is a different distribution from this
+archive, and every notice folded into it has to travel with it.
