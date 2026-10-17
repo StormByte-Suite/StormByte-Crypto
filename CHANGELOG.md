@@ -22,7 +22,7 @@ If you landed here from a release link and have not read the tree:
 
 ### Added
 
-- Release archives include `THIRDPARTY`, `COPYING.CryptoPP` and `COPYING.bzip2`. Crypto++ 8.9.0 (`843d74c7`) and libbzip2 1.0.8 (`6a8690fc`) are compiled into the shared library. The notices are the upstream texts of those commits. Base, Buffer, Logger and System stay separate shared libraries.
+- Release archives include `THIRD-PARTY` (not `THIRDPARTY`: on Windows and macOS that name is the same path as the `thirdparty/` directory, so the file never landed in those zips), `COPYING.CryptoPP` and `COPYING.bzip2`. Crypto++ 8.9.0 (`843d74c7`) and libbzip2 1.0.8 (`6a8690fc`) are compiled into the shared library. The notices are the upstream texts of those commits. Base, Buffer, Logger and System stay separate shared libraries.
 
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...HEAD
 

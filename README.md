@@ -352,7 +352,7 @@ From 2.0.0, original StormByte-Crypto source is dual-licensed:
 
 Neither license covers other StormByte modules or third-party material shipped under `thirdparty/` (including Crypto++, bundled libbzip2, and vendored StormByte trees). Those keep their own licenses. Neither license grants patent rights.
 
-Binary releases add THIRDPARTY beside LICENSE. That file is a notice for what was compiled into the shared library, not another grant. The texts it names are the COPYING.* files in the same archive.
+Binary releases add THIRD-PARTY beside LICENSE. That file is a notice for what was compiled into the shared library, not another grant. The texts it names are the COPYING.* files in the same archive.
 
 ## Support
 
