@@ -36,6 +36,7 @@ If you landed here from a release link and have not read the tree:
 - **Breaking:** Crypto exceptions no longer format with `std::format`. A message with arguments replaces literal `{}` through `Safe::String::ReplaceToken`, the same rule as Base 2.1.0. `what()` stays `StormByte.Crypto: message`, and a child segment is only the part under `Crypto` (`StormByte.Crypto.Hasher`, `StormByte.Crypto.Secure.Vault`).
 - Bumped project version to 2.0.2.
 - Symmetric key derivation is always PBKDF2-HMAC-SHA256 with 600000 iterations. `STORMBYTE_CRYPTO_INSECURE_PBKDF2_ITERATIONS_FOR_CI` is gone, and CI no longer compiles with it.
+- Part of the port: Crypto exports no `operator<=>`. The Windows fault in `Bzip2Tests` (`i < big.size()`) was a null write in `StormByte.dll!operator<=>`, not Crypto++. clang-cl returns `std::strong_ordering` through a hidden pointer and MSVC does not pass one. The port requires the rebuilt Base 2.1.0, where that operator is `STORMBYTE_FORCE_INLINE` and is not an `extern template`. The tests must be recompiled against that archive. An old object file still imports the DLL symbol.
 
 [2.0.2]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.1...2.0.2
 
