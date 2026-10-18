@@ -100,13 +100,15 @@ jobs:
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
             -DENABLE_LTO=ON
-            -DENABLE_PGO=ON
+            -DENABLE_PGO=OFF
+            -DENABLE_TEST=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
             ${{ matrix.compiler == 'clang-libc++' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_CXX_STANDARD_LIBRARIES=-stdlib=libc++' || '' }}
-          run-tests: false
+          run-tests: true
+          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
 
   ###########################################################################
   # macOS
@@ -161,12 +163,14 @@ jobs:
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
             -DENABLE_LTO=ON
-            -DENABLE_PGO=ON
+            -DENABLE_PGO=OFF
+            -DENABLE_TEST=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-          run-tests: false
+          run-tests: true
+          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
 
   ###########################################################################
   # Windows (must build with MSVC in C++23 until CryptoPP accepts clang-cl)
@@ -258,9 +262,11 @@ jobs:
           build-type: ${{ env.BUILD_TYPE }}
           configure-options: >-
             -DENABLE_LTO=ON
-            -DENABLE_PGO=ON
+            -DENABLE_PGO=OFF
+            -DENABLE_TEST=ON
             -DWITH_CRYPTOPP=BUNDLED
             -DWITH_BZIP2=BUNDLED
             -DWITH_STORMBYTE=BUNDLED
             -DBUILD_SHARED_LIBS=ON
-          run-tests: false
+          run-tests: true
+          ctest-options: --output-on-failure --test-dir ${{ github.workspace }}/build/test
