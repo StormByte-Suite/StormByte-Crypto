@@ -20,10 +20,6 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-### Fixed
-
-- Clang PGO drops `.profraw` files left by compiler probes before ctest, and `llvm-profdata merge` uses `-failure-mode=all`. A probe writes a few hundred bytes for `main`, with a padded empty symbol name. The default failure mode is `any`, so that one file aborted the merge even after the instrumented tests had passed.
-
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...HEAD
 
 ## [2.0.2] - 2026-10-18
@@ -47,6 +43,7 @@ If you landed here from a release link and have not read the tree:
 ### Fixed
 
 - `-stdlib=libc++` and `-stdlib=libstdc++` do not count as custom C++ flags. If either is the only extra flag, Release still gets `-O2` and the CPU baseline.
+- Clang PGO drops `.profraw` files left by compiler probes before ctest, and `llvm-profdata merge` uses `-failure-mode=all`. A probe writes a few hundred bytes for `main`, with a padded empty symbol name. The default failure mode is `any`, so that one file aborted the merge even after the instrumented tests had passed.
 
 [2.0.2]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.1...2.0.2
 
