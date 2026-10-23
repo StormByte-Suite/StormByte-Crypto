@@ -41,7 +41,7 @@
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/engine/secret/details.hxx>
 #include <StormByte/crypto/helpers/password_view.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
 #include <eccrypto.h>
 #include <oids.h>

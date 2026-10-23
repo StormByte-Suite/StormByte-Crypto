@@ -39,10 +39,49 @@
  */
 
 #include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
-namespace StormByte::Crypto {
-	CryptoPP::AutoSeededRandomPool& RNG() {
-		thread_local CryptoPP::AutoSeededRandomPool rngInstance;
-		return rngInstance;
+#include <secblock.h>
+
+#include <cstddef>
+#include <cstring>
+
+StormByte::Safe::SecureBinary StormByte::Crypto::Random::Bytes(ByteSize count) {
+	if (count == ByteSize{0})
+		throw Exception("Random byte count must be greater than zero");
+	try {
+		CryptoPP::SecByteBlock bytes(static_cast<std::size_t>(count));
+		RNG().GenerateBlock(bytes, bytes.size());
+		return Safe::SecureBinary(reinterpret_cast<const std::byte*>(bytes.data()), count);
+	} catch (const CryptoPP::Exception& error) {
+		throw Exception("Random byte generation failed: {}", error.what());
 	}
+}
+
+StormByte::Safe::String StormByte::Crypto::Random::Text(Size count) {
+	if (count == Size{0})
+		throw Exception("Random character count must be greater than zero");
+	try {
+		CryptoPP::SecByteBlock bytes(static_cast<std::size_t>(count));
+		auto& rng = RNG();
+		for (std::size_t index = 0; index < bytes.size(); ++index)
+			bytes[index] = static_cast<CryptoPP::byte>(rng.GenerateWord32(33, 126));
+		Safe::String result(count, '\0');
+		std::memcpy(result.data(), bytes.data(), bytes.size());
+		return result;
+	} catch (const CryptoPP::Exception& error) {
+		throw Exception("Random text generation failed: {}", error.what());
+	}
+}
+
+namespace StormByte::Crypto::Random {
+	Exception::Exception(const Exception& other) = default;
+
+	Exception::Exception(Exception&& other) noexcept = default;
+
+	Exception::~Exception() noexcept = default;
+
+	Exception& Exception::operator=(const Exception& other) = default;
+
+	Exception& Exception::operator=(Exception&& other) noexcept = default;
 }

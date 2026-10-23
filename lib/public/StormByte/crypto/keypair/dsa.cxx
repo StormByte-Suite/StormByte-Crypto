@@ -41,7 +41,7 @@
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/keypair/dsa.hxx>
 #include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
 #include <dsa.h>
 

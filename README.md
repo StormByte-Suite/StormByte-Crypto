@@ -9,13 +9,14 @@
 
 This repository is **StormByte Crypto**: hash, compress, encrypt, sign and key agreement for the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.1.0) 2.1.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.2, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.2 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.0.2. Public headers live under `StormByte/crypto/`. Crypto++ stays in the private tree: installed headers never mention `CryptoPP::`. With a static Crypto++ link, consumers do not install it.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.0) 2.2.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.3, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.3 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.0. Public headers live under `StormByte/crypto/`. Crypto++ stays in the private tree: installed headers never mention `CryptoPP::`. With a static Crypto++ link, consumers do not install it.
 
 The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedia, Network and System are **other repositories**. This one does not implement them.
 
 ## What this module does
 
 - **Hasher** — SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b, BLAKE2s. One-shot hex digest or a `Buffer::Consumer` that yields the digest when the source closes.
+- **Random** — Cryptographically secure bytes as `Safe::SecureBinary` and unbiased printable ASCII text as `Safe::String`, using the existing per-thread generator.
 - **Compressor** — Zlib, Gzip, BZip2. Same block / stream contract as the rest of the module.
 - **Symmetric crypter** — AES CBC, AES-GCM, ChaCha20-Poly1305, Camellia, Serpent, Twofish. Keys from `Secure::Password` via PBKDF2-HMAC-SHA256 (600 000 iterations). Authenticated modes fail closed on a bad tag or a wrong password.
 - **Asymmetric crypter** — RSA OAEP-SHA and ECC ECIES. `Strategy::Native` is one PK transform per blob. `Strategy::Hybrid` wraps a random AES-256-GCM session key. Decrypt auto-detects the envelope.
@@ -47,6 +48,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 - [Usage](#usage)
 	- [Private implementation](#private-implementation)
   - [Factories](#factories)
+  - [Random bytes and text](#random-bytes-and-text)
   - [Password and Vault](#password-and-vault)
   - [Hash and compress](#hash-and-compress)
   - [Symmetric encrypt](#symmetric-encrypt)
@@ -61,7 +63,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 ## Installation
 
-Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.0, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.1.0) 2.1.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.2, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.2 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.0.2. Configure downloads those release archives. There is no StormByte source submodule. Crypto++ and libbzip2 are build dependencies. Prefer a **static** Crypto++ link when you redistribute. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
+Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.0, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.0) 2.2.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.3, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.3 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.0. Configure downloads those release archives. There is no StormByte source submodule. Crypto++ and libbzip2 are build dependencies. Prefer a **static** Crypto++ link when you redistribute. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
 
 ```sh
 git clone --recursive https://github.com/StormByte-Suite/StormByte-Crypto.git
@@ -130,9 +132,41 @@ auto ecdh   = Secret::Create(Secret::Type::ECDH, ecdhKp);
 
 Concrete types (`Crypter::AES_GCM`, `KeyPair::X25519`, `Signer::ED25519`, …) construct the same way without going through `Create`.
 
+### Random bytes and text
+
+```cpp
+#include <StormByte/crypto/random.hxx>
+
+auto bytes = StormByte::Crypto::Random::Bytes(StormByte::ByteSize{32});
+auto text = StormByte::Crypto::Random::Text(StormByte::Size{24});
+```
+
+`Bytes` returns exactly the requested number of cryptographically secure octets.
+`Text` returns exactly the requested number of uniformly sampled ASCII characters
+from 33 (`!`) through 126 (`~`), without spaces or embedded NUL. Its trailing NUL
+does not count toward the length. Each call returns independently owned storage.
+
+Both functions reject size zero with `StormByte::Crypto::Random::Exception`.
+Provider failures throw the same exception, with path `StormByte.Crypto.Random`;
+allocation errors propagate unchanged. No partial result is returned on failure,
+and temporary provider storage is securely wiped. `Bytes` returns
+`Safe::SecureBinary`: discarded/released bytes are automatically zeroed, and
+memory locking (`mlock` / `VirtualLock`) is best effort. Locking can fail due to
+OS limits; it is not a guarantee against swapping. Moving or swapping into a plain
+`Safe::Binary` loses these protections, and copies through borrowed views remain
+the caller's responsibility. Direct writes through `data()`, `span()` or indexed
+access do not provide a separate wipe-before-overwrite guarantee.
+`Text` still returns ordinary `Safe::String`, **not automatically wiped or locked**.
+
+The public API exposes neither the provider nor its RNG. Crypto's internal random
+passwords, salts, IVs and hybrid session keys reuse this byte API through a private
+secure-buffer adapter. `Crypter::Symmetric::RandomPassword` retains its existing
+`noexcept` contract and still accepts length zero (an empty password); a failure
+inside that legacy `noexcept` API terminates rather than propagating an exception.
+
 ### Password and Vault
 
-`Secure::Password` is the only public container for secret bytes (passphrases, private key DER, shared secrets). A `Safe::Shared` owner retains Crypto's secure buffer; copies share it and the last owner wipes it. `Size()` is `StormByte::ByteSize`. Ordinary `Safe::String` and `Safe::Binary` are not automatically wiped secret containers.
+`Secure::Password` is Crypto's opaque public container for secret bytes (passphrases, private key DER, shared secrets); `Random::Bytes` exposes generated bytes through Base's `Safe::SecureBinary`. A `Safe::Shared` owner retains Crypto's password buffer; copies share it and the last owner wipes it. `Size()` is `StormByte::ByteSize`. Ordinary `Safe::String` and `Safe::Binary` are not automatically wiped secret containers.
 
 Ingestion distinguishes borrowed text from ceded mutable Safe text. No STL string allocation is adopted or freed inside Crypto.
 

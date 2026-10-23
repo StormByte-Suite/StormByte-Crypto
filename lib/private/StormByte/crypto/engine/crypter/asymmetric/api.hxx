@@ -43,7 +43,7 @@
 #include <StormByte/crypto/engine/crypter/asymmetric/details.hxx>
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/keypair/generic.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/exception.hxx>
 

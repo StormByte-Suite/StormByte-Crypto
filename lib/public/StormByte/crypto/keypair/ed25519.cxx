@@ -42,7 +42,7 @@
 #include <StormByte/crypto/engine/keypair/api.hxx>
 #include <StormByte/crypto/keypair/ed25519.hxx>
 #include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
 #include <queue.h>
 #include <xed25519.h>

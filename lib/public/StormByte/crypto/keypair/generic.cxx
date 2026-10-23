@@ -48,8 +48,8 @@
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/keypair/rsa.hxx>
 #include <StormByte/crypto/keypair/x25519.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/random.hxx>
 #include <StormByte/safe/optional.hxx>
 #include <StormByte/safe/pair.hxx>
 #include <StormByte/safe/string.hxx>
@@ -86,6 +86,7 @@ using StormByte::Crypto::Helpers::SecureWipe;
 namespace Secure = StormByte::Crypto::Secure;
 using StormByte::Crypto::Secure::Password;
 using StormByte::Crypto::RNG;
+using StormByte::Crypto::Randomize;
 namespace Safe = StormByte::Safe;
 
 namespace {
@@ -677,8 +678,8 @@ namespace {
 				return false;
 			salt.CleanNew(16);
 			iv.CleanNew(16);
-			RNG().GenerateBlock(salt, salt.size());
-			RNG().GenerateBlock(iv, iv.size());
+			Randomize({salt.data(), salt.size()});
+			Randomize({iv.data(), iv.size()});
 			key.CleanNew(32);
 			CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf;
 			pbkdf.DeriveKey(key, key.size(), 0, pass, passLen, salt, salt.size(), kPkcs8Pbkdf2Iterations);

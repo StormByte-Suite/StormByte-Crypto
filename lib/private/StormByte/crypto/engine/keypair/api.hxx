@@ -42,7 +42,7 @@
 
 #include <StormByte/crypto/engine/keypair/details.hxx>
 #include <StormByte/crypto/helpers/password_view.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/optional.hxx>

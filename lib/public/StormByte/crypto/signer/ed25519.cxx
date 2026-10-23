@@ -42,7 +42,7 @@
 #include <StormByte/crypto/engine/signer/details.hxx>
 #include <StormByte/crypto/helpers/password_view.hxx>
 #include <StormByte/crypto/helpers/secure_wipe.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/signer/ed25519.hxx>
 #include <StormByte/safe/binary.hxx>
 #include <StormByte/safe/pointers.hxx>

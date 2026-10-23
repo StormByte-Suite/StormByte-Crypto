@@ -46,8 +46,8 @@
 #include <StormByte/crypto/crypter/symmetric/serpent.hxx>
 #include <StormByte/crypto/crypter/symmetric/twofish.hxx>
 #include <StormByte/crypto/helpers/secure_wipe.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/secure/password.hxx>
-#include <StormByte/crypto/random.hxx>
 
 using namespace StormByte::Crypto::Crypter;
 using StormByte::Crypto::Helpers::SecureWipe;
@@ -56,7 +56,7 @@ Symmetric::~Symmetric() noexcept = default;
 
 StormByte::Crypto::Secure::Password Symmetric::RandomPassword(std::size_t length) noexcept {
 	CryptoPP::SecByteBlock raw(length);
-	RNG().GenerateBlock(raw, length);
+	Randomize({raw.data(), raw.size()});
 	StormByte::Crypto::Secure::Password result(raw.data(), StormByte::ByteSize{raw.size()});
 	SecureWipe(raw);
 	return result;

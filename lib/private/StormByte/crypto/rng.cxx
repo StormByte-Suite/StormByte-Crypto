@@ -38,23 +38,21 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
-#pragma once
+#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
-#include <StormByte/crypto/visibility.h>
+#include <cstring>
 
-#include <osrng.h>
-
-/**
- * @brief Crypto module of the StormByte suite.
- */
 namespace StormByte::Crypto {
-	/**
-	 * @brief Per-thread `AutoSeededRandomPool`.
-	 *
-	 * `CryptoPP::AutoSeededRandomPool` is not safe for concurrent use; the streaming
-	 * encrypt/decrypt paths run their own detached worker thread per operation, so a single
-	 * process-wide instance would race. Returns each calling thread's own instance instead.
-	 * @return RNG reference.
-	 */
-	STORMBYTE_CRYPTO_PRIVATE CryptoPP::AutoSeededRandomPool& RNG();
+	CryptoPP::AutoSeededRandomPool& RNG() {
+		thread_local CryptoPP::AutoSeededRandomPool rngInstance;
+		return rngInstance;
+	}
+
+	void Randomize(std::span<unsigned char> output) {
+		if (output.empty())
+			return;
+		auto bytes = Random::Bytes(ByteSize{output.size()});
+		std::memcpy(output.data(), bytes.data(), output.size());
+	}
 }

@@ -43,7 +43,7 @@
 #include <StormByte/crypto/engine/crypter/symmetric/declarations.hxx>
 #include <StormByte/crypto/engine/crypter/symmetric/details.hxx>
 #include <StormByte/crypto/helpers/secure_wipe.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 #include <StormByte/safe/binary.hxx>
 #include <StormByte/safe/pointers.hxx>
 #include <StormByte/safe/vector.hxx>
@@ -134,8 +134,8 @@ namespace StormByte::Crypto::Engine::Crypter::Symmetric {
 				if constexpr (!Encrypting)
 					return true;
 				try {
-					RNG().GenerateBlock(m_salt.data(), static_cast<std::size_t>(m_salt.size()));
-					RNG().GenerateBlock(m_iv.data(), static_cast<std::size_t>(m_iv.size()));
+					Randomize({m_salt.data(), static_cast<std::size_t>(m_salt.size())});
+					Randomize({m_iv.data(), static_cast<std::size_t>(m_iv.size())});
 					if (!Initialize())
 						return false;
 					output.reserve(m_salt_size + m_iv_size);

@@ -41,7 +41,7 @@
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/helpers/secure_wipe.hxx>
 #include <StormByte/crypto/engine/crypter/asymmetric/details.hxx>
-#include <StormByte/crypto/random.hxx>
+#include <StormByte/crypto/rng.hxx>
 
 #include <aes.h>
 #include <cstring>
@@ -182,8 +182,8 @@ namespace {
 				try {
 					m_key.CleanNew(SymKeyLen);
 					m_iv.CleanNew(IvLen);
-					RNG().GenerateBlock(m_key, m_key.size());
-					RNG().GenerateBlock(m_iv, m_iv.size());
+					Randomize({m_key.data(), m_key.size()});
+					Randomize({m_iv.data(), m_iv.size()});
 					Safe::Binary encryptedKey;
 					if (!m_box->Transform({reinterpret_cast<const std::byte*>(m_key.data()), m_key.size()}, encryptedKey) || !WriteEnvelopeHeader(encryptedKey, m_iv, output))
 						return false;

@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.1.0) 2.1.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.2, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.2 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.0.2. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.0) 2.2.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.3, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.3 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
-Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, Password and Vault. Crypto++ never leaves the private tree.
+Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, Random, Password and Vault. Crypto++ never leaves the private tree.
 
 If you landed here from a release link and have not read the tree:
 
@@ -20,7 +20,22 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.1.0...HEAD
+
+## [2.1.0] - 2026-10-23
+
+### Added
+
+- Public `StormByte::Crypto::Random::Bytes(ByteSize)` and `Random::Text(Size)` in `<StormByte/crypto/random.hxx>`. They return independently owned `Safe::SecureBinary` and `Safe::String`, using the existing per-thread cryptographic RNG. Bytes use auto-wiped storage with best-effort memory locking; text is not automatically wiped or locked. Text uniformly samples ASCII 33-126 (no spaces). Zero sizes and provider failures throw `Random::Exception` under `StormByte.Crypto.Random`; failures never return partial results, and temporary provider storage is wiped. Allocation errors propagate unchanged.
+- Random API tests cover exact lengths, ASCII bounds, independent storage, zero-size errors, exception paths and value semantics, and random-password regression. An isolated test executable substitutes the provider without production hooks to verify every output byte, text rejection sampling and endpoints, and initialization/generation failures without exposing partial output.
+
+### Changed
+
+- Each bundled StormByte component declares its own dependency linkage in its component directory, following Buffer's layout. The parent file only selects/discovers components and links Crypto to them.
+- Updated suite dependencies to Base 2.2.0, Buffer 2.0.3, Logger 2.0.3 and System 2.1.0. All binary dependencies now target Base 2.2.0; rebuilding Crypto and its consumers is required because Base changed the `Safe::Binary` ABI.
+- Renamed the private RNG header to `rng.hxx` and updated every provider include to avoid a public/private `random.hxx` collision. Crypto's random passwords, salts, IVs and hybrid session keys now reuse the public byte API through a private secure-buffer adapter. The legacy `RandomPassword` contract, including `noexcept` and empty passwords at length zero, is unchanged. No other suite component was modified.
+
+[2.1.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...2.1.0
 
 ## [2.0.2] - 2026-10-19
 
