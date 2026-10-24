@@ -26,6 +26,11 @@ If you landed here from a release link and have not read the tree:
 
 ### Changed
 
+- Bundled third-party StormByte dependencies now require the matching patch releases (Base 2.2.1, Buffer 2.0.4, Logger 2.0.4, System 2.1.1 where applicable) so a bundled build picks up the /arch:AVX change.
+
+
+### Changed
+
 - Windows Release optimizations use `/arch:AVX` instead of `/arch:AVX2`. The previous baseline required a Haswell-or-newer CPU (AVX2). `/arch:AVX` runs on Sandy Bridge and Ivy Bridge (including the i7-3770K) and later.
 
 [2.1.1]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.1.0...2.1.1
@@ -40,7 +45,7 @@ If you landed here from a release link and have not read the tree:
 ### Changed
 
 - Each bundled StormByte component declares its own dependency linkage in its component directory, following Buffer's layout. The parent file only selects/discovers components and links Crypto to them.
-- Updated suite dependencies to Base 2.2.0, Buffer 2.0.3, Logger 2.0.3 and System 2.1.0. All binary dependencies now target Base 2.2.0; rebuilding Crypto and its consumers is required because Base changed the `Safe::Binary` ABI.
+- Updated suite dependencies to Base 2.2.1, Buffer 2.0.4, Logger 2.0.4 and System 2.1.1. All binary dependencies now target Base 2.2.1; rebuilding Crypto and its consumers is required because Base changed the `Safe::Binary` ABI.
 - Renamed the private RNG header to `rng.hxx` and updated every provider include to avoid a public/private `random.hxx` collision. Crypto's random passwords, salts, IVs and hybrid session keys now reuse the public byte API through a private secure-buffer adapter. The legacy `RandomPassword` contract, including `noexcept` and empty passwords at length zero, is unchanged. No other suite component was modified.
 
 [2.1.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.0.2...2.1.0
