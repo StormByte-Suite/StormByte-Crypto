@@ -11,7 +11,7 @@ StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
 It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.0) 2.2.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.3, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.3 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
-Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, Random, Password and Vault. Crypto++ never leaves the private tree.
+Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, X509, Random, Password and Vault. Crypto++ never leaves the private tree.
 
 If you landed here from a release link and have not read the tree:
 
@@ -26,6 +26,7 @@ If you landed here from a release link and have not read the tree:
 
 ### Added
 
+- `X509::Certificate` (`StormByte/crypto/x509/certificate.hxx`): strict DER/PEM parsing via `X509::Load`/`LoadAll` and `Certificate::Parse`, PEM/DER `Save`, field accessors (version, serial, subject/issuer common names, validity, basicConstraints, keyUsage, `PublicKey()` as a public-only `KeyPair`), `IsIssuedBy` and `VerifyChain` up to a trusted anchor. Verifies ecdsa-with-SHA256/384/512 and sha256/384/512WithRSAEncryption, validity periods, CA flag, keyCertSign, path length constraints and unknown critical extensions. Revocation and name constraints are not processed.
 - In-memory key persistence: `KeyPair::Generic::SavePublic(format)` and `SavePrivate(format[, password])` return the encoded key as a `StormByte::Safe::SecureBinary`, and `KeyPair::Load` gains `const SecureBinary&` overloads for a single key, a public/private pair (an empty buffer means absent) and their password variants. Keys can come from a database, a network message or `#embed` without touching the filesystem.
 
 ### Changed

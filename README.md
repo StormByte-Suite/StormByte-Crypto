@@ -23,6 +23,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 - **Signer** — DSA, RSA PKCS#1 v1.5 + SHA-256, ECDSA, Ed25519. Block and streaming sign / verify.
 - **Secret** — ECDH on secp256r1 / secp384r1 / secp521r1, and X25519. The shared secret is a `Secure::Password`, not a `std::string`.
 - **KeyPair** — Generate, persist PEM or DER, optional PKCS#8 (PBES2 + PBKDF2 + AES-256-CBC, OpenSSL-compatible). Public key travels as `StormByte::Safe::String` (Base64 SPKI); private key stays in a `Secure::Password`. Handles are `StormByte::Safe::Clonable` with `Safe::Shared` (`KeyPair::Generic::PointerType`).
+- **X509** — Strict DER/PEM certificate parsing and chain verification up to a trusted anchor: ecdsa-with-SHA256/384/512 and sha256/384/512WithRSAEncryption signatures, validity periods, basicConstraints (CA flag and path length), keyUsage and rejection of unknown critical extensions.
 - **Secure::Password / Secure::Vault** — wiped secret buffer and named store under `StormByte::Crypto::Secure`. Last owner zeros the bytes. Vault is movable, not copyable. `Password::Size()` is `StormByte::ByteSize`. A missing `Vault::Get` is `StormByte.Crypto.Secure.Vault: …`.
 - **Buffer-first I/O** — `std::span<const std::byte>` → `Buffer::WriteOnly` for blocks; `Buffer::Consumer` in / out for pipelines (Network, Multimedia). Octet payloads are `StormByte::Safe::Binary`. Abstract counts use `StormByte::Size`; octet lengths use `StormByte::ByteSize`. Borrowed text inputs generally use `std::string_view`; key agreement borrows a `const Safe::String&`.
 
@@ -56,6 +57,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
   - [KeyPair on disk](#keypair-on-disk)
   - [Sign and verify](#sign-and-verify)
   - [Key agreement](#key-agreement)
+  - [Certificate chains](#certificate-chains)
 - [Security notes](#security-notes)
 - [Contributing](#contributing)
 - [License](#license)
@@ -387,9 +389,29 @@ auto shared = secret->Share(bob->PublicKey());
 
 `Generic::Share`, `ECDH::Share` and `X25519::Share` take `const StormByte::Safe::String&` and are `const` member functions. `X25519::DeriveSharedSecret(KeyPair::Generic::PointerType, const StormByte::Safe::String&)` is the static alternative. The peer key is Base64 public material, borrowed during the call; `PublicKey()` already returns the required reference. A borrowed `std::string_view` is not the Share signature: construct a `Safe::String` explicitly when starting from a view. The result is `StormByte::Safe::Optional<Secure::Password>`. ECDH is the same with `KeyPair::ECDH::Generate(256|384|521)` and `Secret::Type::ECDH`.
 
+### Certificate chains
+
+```cpp
+#include <StormByte/crypto/x509/certificate.hxx>
+
+using namespace StormByte::Crypto;
+
+// anchorPem is trusted (e.g. #embed); leafPem and intermediatePem arrive untrusted.
+auto anchor = X509::Load(anchorPem);
+auto leaf = X509::Load(leafPem);
+auto intermediates = X509::LoadAll(intermediatePem);
+bool trusted = anchor && leaf
+	&& leaf->VerifyChain(intermediates, *anchor)
+	&& leaf->HasKeyUsage(X509::KeyUsage::DigitalSignature);
+auto key = trusted ? leaf->PublicKey() : nullptr;	// public-only KeyPair for Signer
+```
+
+`X509::Load` takes DER or the first PEM `CERTIFICATE` block; `LoadAll` returns every block of a bundle and fails as a whole when one is malformed. `VerifyChain` checks every link's signature and name, every validity period (anchor included; pass a `TimePoint` to choose the instant), that each issuer is a v3 CA allowed to sign certificates whose path length covers the CAs below it, and that no certificate carries an unrecognized critical extension. The anchor's own signature is not checked: it is trusted by being supplied. Names are compared byte-for-byte; revocation (CRL/OCSP), name constraints and policies are not processed, and the leaf's key usage is left to the caller.
+
 ## Security notes
 
 - **Decompression of untrusted input is not size-bounded.** Like the underlying zlib/libbzip2, `Compressor` decompresses as much as the stream decodes to; a small malicious input can expand to a very large output ("decompression bomb"). If you decompress data from an untrusted source, bound it yourself: check the expected/maximum size before decompressing, or stop draining the streaming `Consumer` once your own limit is hit.
+- `X509` verification only proves a certificate chains to the anchor you pass in. An anchor embedded in your own binary is as trustworthy as the binary itself.
 - Private key files written by `KeyPair::Save`/`SavePrivate` are created owner-only (`0600` on POSIX) and refuse to write through a pre-existing symlink at the destination path. Public key files are unaffected by either restriction.
 - Prefer ceded mutable `Safe::String` input when the source must be wiped by `Password` construction. Borrowed `string_view`, literals and raw-byte inputs are copied but their sources are not wiped; clear sensitive source storage yourself when it is no longer needed. Merely destroying or clearing an ordinary string does not guarantee that its former bytes are overwritten.
 
