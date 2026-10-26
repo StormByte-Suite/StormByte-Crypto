@@ -323,6 +323,26 @@ auto enc = KeyPair::Load(directory / "app-enc.pub.pem", directory / "app-enc.pem
 
 Use an existing application-owned directory in production and check the `Save` boolean / `Load` pointer before proceeding. Explicit `std::filesystem::path` values select the caller-side adapters without relying on conversions from string literals. Direct `KeyPair::PathView` arguments borrow native characters: `wchar_t` on Windows, `char` on Linux/macOS. On Windows use native wide text for a direct view, or build a filesystem path in the caller; do not pass narrow UTF-8 text as though it were a native Windows `PathView`. A direct view's source must stay alive for the call; Crypto copies it before OS operations.
 
+The same keys can live in memory instead of files, for example bytes read from a database or embedded with `#embed`. `SavePublic(format)` and `SavePrivate(format[, password])` return a `StormByte::Safe::SecureBinary` (wiped and page-locked; empty on failure), and `KeyPair::Load` takes `const SecureBinary&` for one key, or a public/private pair where an empty buffer means absent. The file overloads read or write exactly these bytes.
+
+```cpp
+#include <StormByte/crypto/keypair/ecdsa.hxx>
+#include <StormByte/crypto/keypair/generic.hxx>
+#include <StormByte/safe/secure_binary.hxx>
+
+using namespace StormByte::Crypto;
+using StormByte::Safe::SecureBinary;
+
+auto kp = KeyPair::ECDSA::Generate(384);
+SecureBinary pub = kp->SavePublic();                      // PEM "PUBLIC KEY"
+SecureBinary priv = kp->SavePrivate(KeyPair::StorageFormat::DER);
+
+auto pair = KeyPair::Load(pub, priv);
+auto verifyOnly = KeyPair::Load(pub);
+// An EC key loads as Type::ECC; rebuild the role you need from its material.
+auto ecdsa = KeyPair::ECDSA::MakePointer<KeyPair::ECDSA>(verifyOnly->PublicKey(), std::nullopt);
+```
+
 Wrong or missing wrap password fails closed. Type comes from the OID (RSA, DSA, EC, Ed25519, X25519). Generate → Save → Load stays usable for encrypt, sign and share. X25519 also understands raw 32-byte library form. `PublicKey()` is `const StormByte::Safe::String&`; convert with `std::string{std::string_view{kp->PublicKey()}}` if you need a `std::string`.
 
 ### Sign and verify

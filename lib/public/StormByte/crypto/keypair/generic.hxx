@@ -45,6 +45,7 @@
 #include <StormByte/crypto/typedefs.hxx>
 #include <StormByte/crypto/visibility.h>
 #include <StormByte/safe/optional.hxx>
+#include <StormByte/safe/secure_binary.hxx>
 #include <StormByte/safe/string.hxx>
 
 #include <filesystem>
@@ -183,8 +184,31 @@ namespace StormByte {
 
 					/**
 					 * @name Persistence
+					 * File overloads write exactly the bytes the in-memory overloads return.
 					 * @{
 					 */
+					/**
+					 * @brief Encode the public key in memory.
+					 * @param format PEM or DER.
+					 * @return Encoded key, empty on failure.
+					 */
+					StormByte::Safe::SecureBinary SavePublic(StorageFormat format = StorageFormat::PEM) const noexcept;
+
+					/**
+					 * @brief Encode the private key in memory, unencrypted.
+					 * @param format PEM or DER.
+					 * @return Encoded key wiped on release, empty without a private key or on failure.
+					 */
+					StormByte::Safe::SecureBinary SavePrivate(StorageFormat format = StorageFormat::PEM) const noexcept;
+
+					/**
+					 * @brief Encode the private key in memory as encrypted PKCS#8 (prefer PEM).
+					 * @param encryptPassword Encryption password.
+					 * @param format Prefer PEM.
+					 * @return Encoded key wiped on release, empty without a private key or on failure.
+					 */
+					StormByte::Safe::SecureBinary SavePrivate(const Secure::Password& encryptPassword, StorageFormat format = StorageFormat::PEM) const noexcept;
+
 					/**
 					 * @brief Write public and private files under a directory. Private key unencrypted.
 					 * @param directory Existing directory.
@@ -315,6 +339,38 @@ namespace StormByte {
 			 * @return Keypair pointer.
 			 */
 			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Create(Type type, unsigned short bits) noexcept;
+
+			/**
+			 * @brief Load from one in-memory key (public, private, or concatenated PEM). Format is auto-detected.
+			 * @param data PEM or DER bytes, for example from a file or `#embed`.
+			 * @return Keypair pointer, or nullptr. Elliptic-curve keys load as @ref Type::ECC.
+			 */
+			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Load(const StormByte::Safe::SecureBinary& data) noexcept;
+
+			/**
+			 * @brief Load from one in-memory key; decrypt if needed.
+			 * @param data PEM or DER bytes.
+			 * @param password Password for encrypted private material.
+			 * @return Keypair pointer, or nullptr.
+			 */
+			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Load(const StormByte::Safe::SecureBinary& data, const Secure::Password& password) noexcept;
+
+			/**
+			 * @brief Load from separate in-memory public and private keys. Format is auto-detected.
+			 * @param publicKey Public key bytes, or empty.
+			 * @param privateKey Private key bytes, or empty.
+			 * @return Keypair pointer, or nullptr.
+			 */
+			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Load(const StormByte::Safe::SecureBinary& publicKey, const StormByte::Safe::SecureBinary& privateKey) noexcept;
+
+			/**
+			 * @brief Load from separate in-memory keys; decrypt the private key if needed.
+			 * @param publicKey Public key bytes, or empty.
+			 * @param privateKey Private key bytes. Raw DER is taken as encrypted PKCS#8.
+			 * @param password Password for an encrypted private key.
+			 * @return Keypair pointer, or nullptr.
+			 */
+			STORMBYTE_CRYPTO_PUBLIC Generic::PointerType Load(const StormByte::Safe::SecureBinary& publicKey, const StormByte::Safe::SecureBinary& privateKey, const Secure::Password& password) noexcept;
 
 			/**
 			 * @brief Load from separate public and private files. Format is auto-detected.

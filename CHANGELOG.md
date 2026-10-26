@@ -20,7 +20,19 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.1.1...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.0...HEAD
+
+## [2.2.0] - 2026-10-26
+
+### Added
+
+- In-memory key persistence: `KeyPair::Generic::SavePublic(format)` and `SavePrivate(format[, password])` return the encoded key as a `StormByte::Safe::SecureBinary`, and `KeyPair::Load` gains `const SecureBinary&` overloads for a single key, a public/private pair (an empty buffer means absent) and their password variants. Keys can come from a database, a network message or `#embed` without touching the filesystem.
+
+### Changed
+
+- The file `Save`/`SavePublic`/`SavePrivate`/`Load` overloads now delegate to the in-memory ones, so a file holds exactly the bytes the memory API returns. Their observable behavior is unchanged.
+
+[2.2.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.1.1...2.2.0
 
 ## [2.1.1] - 2026-10-24
 

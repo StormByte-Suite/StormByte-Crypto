@@ -134,3 +134,15 @@ add_test(NAME KeyPairInvalidLoadTests COMMAND KeyPairInvalidLoadTests)
 set_tests_properties(KeyPairInvalidLoadTests PROPERTIES
 	LABELS "keypair"
 )
+
+# --- In-memory Save/Load (self-contained, no fixtures) -----------------------
+add_executable(KeyPairMemoryTests keypair_memory_test.cxx)
+target_link_libraries(KeyPairMemoryTests StormByte::Crypto tests)
+target_compile_definitions(KeyPairMemoryTests PRIVATE
+	STORMBYTE_TEST_KEYS_DIR="${CMAKE_BINARY_DIR}/test/keys_memory"
+	STORMBYTE_TEST_KEYS_PASSWORD="${KEYPAIR_TEST_PASS}"
+)
+add_test(NAME KeyPairMemoryTests COMMAND KeyPairMemoryTests)
+set_tests_properties(KeyPairMemoryTests PROPERTIES
+	LABELS "keypair"
+)

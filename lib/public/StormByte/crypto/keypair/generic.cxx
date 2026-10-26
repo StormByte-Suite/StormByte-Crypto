@@ -52,6 +52,7 @@
 #include <StormByte/crypto/secure/password.hxx>
 #include <StormByte/safe/optional.hxx>
 #include <StormByte/safe/pair.hxx>
+#include <StormByte/safe/secure_binary.hxx>
 #include <StormByte/safe/string.hxx>
 #include <StormByte/safe/vector.hxx>
 
@@ -1151,37 +1152,41 @@ namespace {
 		return isPublic ? ".pub.pem" : ".pem";
 	}
 
-	bool WritePublicFile(const std::filesystem::path& path, const Safe::String& pubStored, StorageFormat format) {
-		auto der = PublicStoredToDer(pubStored);
-		if (der.empty())
-			return false;
-		if (format == StorageFormat::DER)
-			return WriteFileBytes(path, der.data(), der.size());
-		const Safe::String pem = PemEncode("PUBLIC KEY", der.data(), der.size());
-		return WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
+	std::span<const std::byte> AsBytes(std::span<const CryptoPP::byte> data) noexcept {
+		return std::as_bytes(data);
 	}
 
-	bool WritePrivateFile(const std::filesystem::path& path, const Secure::Password& priv, StorageFormat format) {
+	std::span<const CryptoPP::byte> AsCryptoBytes(std::span<const std::byte> data) noexcept {
+		return {reinterpret_cast<const CryptoPP::byte*>(data.data()), data.size()};
+	}
+
+	Safe::SecureBinary EncodePublic(const Safe::String& pubStored, StorageFormat format) {
+		auto der = PublicStoredToDer(pubStored);
+		if (der.empty())
+			return {};
+		if (format == StorageFormat::DER)
+			return Safe::SecureBinary(AsBytes(der));
+		const Safe::String pem = PemEncode("PUBLIC KEY", der.data(), der.size());
+		return Safe::SecureBinary(static_cast<std::string_view>(pem));
+	}
+
+	Safe::SecureBinary EncodeDerAs(std::string_view label, const Safe::Vector<CryptoPP::byte>& der, StorageFormat format) {
+		if (format == StorageFormat::DER)
+			return Safe::SecureBinary(AsBytes(der));
+		auto pem = PemEncode(label, der.data(), der.size());
+		WipeOnExit wipePem([&]() noexcept { SecureWipe(pem); });
+		return Safe::SecureBinary(static_cast<std::string_view>(pem));
+	}
+
+	Safe::SecureBinary EncodePrivate(const Secure::Password& priv, StorageFormat format) {
 		auto der = PrivatePasswordToDer(priv);
 		WipeOnExit wipeDer([&]() noexcept { SecureWipe(der); });
 		if (der.empty())
-			return false;
-		bool ok = false;
-		if (format == StorageFormat::DER) {
-			ok = WriteFileBytes(path, der.data(), der.size());
-		} else {
-			auto pem = PemEncode("PRIVATE KEY", der.data(), der.size());
-			WipeOnExit wipePem([&]() noexcept { SecureWipe(pem); });
-			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
-		}
-		SecureWipe(der);
-		if (ok)
-			RestrictToOwner(path);
-		return ok;
+			return {};
+		return EncodeDerAs("PRIVATE KEY", der, format);
 	}
 
-	bool WritePrivateFileEncrypted(
-		const std::filesystem::path& path,
+	Safe::SecureBinary EncodePrivateEncrypted(
 		const Secure::Password& privMaterial,
 		const Secure::Password& encryptPassword,
 		StorageFormat format
@@ -1189,24 +1194,136 @@ namespace {
 		auto plainDer = PrivatePasswordToDer(privMaterial);
 		WipeOnExit wipePlain([&]() noexcept { SecureWipe(plainDer); });
 		if (plainDer.empty())
-			return false;
+			return {};
 		Safe::Vector<CryptoPP::byte> encDer;
 		WipeOnExit wipeEncrypted([&]() noexcept { SecureWipe(encDer); });
-		const bool encrypted = EncryptPkcs8Der(plainDer, encryptPassword, encDer);
-		SecureWipe(plainDer);
-		if (!encrypted || encDer.empty())
+		if (!EncryptPkcs8Der(plainDer, encryptPassword, encDer) || encDer.empty())
+			return {};
+		return EncodeDerAs("ENCRYPTED PRIVATE KEY", encDer, format);
+	}
+
+	bool WriteBytes(const std::filesystem::path& path, const Safe::SecureBinary& bytes, bool restrict) noexcept {
+		if (bytes.empty())
 			return false;
-		bool ok = false;
-		if (format == StorageFormat::DER) {
-			ok = WriteFileBytes(path, encDer.data(), encDer.size());
-		} else {
-			const Safe::String pem = PemEncode("ENCRYPTED PRIVATE KEY", encDer.data(), encDer.size());
-			ok = WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(pem.data()), static_cast<size_t>(pem.size()));
-		}
-		SecureWipe(encDer);
-		if (ok)
+		const auto data = bytes.span();
+		if (!WriteFileBytes(path, reinterpret_cast<const CryptoPP::byte*>(data.data()), data.size()))
+			return false;
+		if (restrict)
 			RestrictToOwner(path);
-		return ok;
+		return true;
+	}
+
+	/**
+	 * @brief Reads an optional key file for the two-path loaders.
+	 * @return false when the file exists but cannot yield bytes; a missing path leaves @p out empty.
+	 */
+	bool ReadOptionalFile(PathView view, Safe::SecureBinary& out) noexcept {
+		try {
+			const std::filesystem::path path{view};
+			if (path.empty() || !std::filesystem::exists(path))
+				return true;
+			auto bytes = ReadFileBytes(path);
+			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
+			if (bytes.empty())
+				return false;
+			out = Safe::SecureBinary(AsBytes(bytes));
+			return true;
+		} catch (...) {
+			return false;
+		}
+	}
+
+	bool ReadKeyFile(PathView view, Safe::SecureBinary& out) noexcept {
+		try {
+			const std::filesystem::path path{view};
+			if (path.empty() || !std::filesystem::exists(path) || std::filesystem::is_directory(path))
+				return false;
+			auto bytes = ReadFileBytes(path);
+			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
+			out = Safe::SecureBinary(AsBytes(bytes));
+			return true;
+		} catch (...) {
+			return false;
+		}
+	}
+
+	bool ExtractPublicDer(std::span<const CryptoPP::byte> bytes, Safe::Optional<Safe::Vector<CryptoPP::byte>>& pubDer) {
+		if (IsPemText(bytes)) {
+			auto blocks = PemDecodeAll(bytes);
+			WipeOnExit wipeBlocks([&]() noexcept {
+				for (auto& block : blocks)
+					SecureWipe(block.second);
+			});
+			for (auto& b : blocks) {
+				if (LabelIsPublic(b.first)) {
+					pubDer = std::move(b.second);
+					return true;
+				}
+			}
+			return false;
+		}
+		pubDer = Safe::Vector<CryptoPP::byte>(bytes.begin(), bytes.end());
+		return true;
+	}
+
+	bool ExtractPrivateDer(std::span<const CryptoPP::byte> bytes, bool rawIsEncrypted,
+		Safe::Optional<Safe::Vector<CryptoPP::byte>>& privDer, bool& encrypted) {
+		if (IsPemText(bytes)) {
+			Safe::String text(bytes.begin(), bytes.end());
+			WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
+			auto blocks = PemDecodeAll(bytes);
+			WipeOnExit wipeBlocks([&]() noexcept {
+				for (auto& block : blocks)
+					SecureWipe(block.second);
+			});
+			for (auto& b : blocks) {
+				if (LabelIsPrivate(b.first)) {
+					encrypted = LabelIsEncrypted(b.first, text);
+					privDer = std::move(b.second);
+					return true;
+				}
+			}
+			return false;
+		}
+		privDer = Safe::Vector<CryptoPP::byte>(bytes.begin(), bytes.end());
+		encrypted = rawIsEncrypted;
+		return true;
+	}
+
+	/**
+	 * @brief Builds a keypair from separate public and private material; empty spans are absent.
+	 * @param password Decrypts the private key; when set, the private key is required and raw DER is taken as encrypted.
+	 */
+	Generic::PointerType LoadPairFromBytes(
+		std::span<const CryptoPP::byte> publicBytes,
+		std::span<const CryptoPP::byte> privateBytes,
+		const Password* password
+	) {
+		Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
+		Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
+		bool privEncrypted = false;
+		WipeOnExit wipePrivate([&]() noexcept {
+			if (privDer)
+				SecureWipe(*privDer);
+		});
+		if (!publicBytes.empty() && !ExtractPublicDer(publicBytes, pubDer))
+			return nullptr;
+		if (!privateBytes.empty() && !ExtractPrivateDer(privateBytes, password != nullptr, privDer, privEncrypted))
+			return nullptr;
+		if (password) {
+			if (!privDer)
+				return nullptr;
+			if (!TryDecryptPrivateDer(*privDer, privEncrypted, password) && privEncrypted)
+				return nullptr;
+		}
+		else if (privEncrypted)
+			return nullptr;
+		Type hint = Type::RSA;
+		if (pubDer)
+			DetectTypeFromDer(*pubDer, hint);
+		else if (privDer)
+			DetectTypeFromDer(*privDer, hint);
+		return BuildFromMaterial(std::move(pubDer), std::move(privDer), hint);
 	}
 }
 
@@ -1228,27 +1345,52 @@ Generic& Generic::operator=(const Generic& other) = default;
 
 Generic& Generic::operator=(Generic&& other) noexcept = default;
 
+Safe::SecureBinary Generic::SavePublic(StorageFormat format) const noexcept {
+	try {
+		if (m_public_key.empty())
+			return {};
+		return EncodePublic(m_public_key, format);
+	} catch (...) {
+		return {};
+	}
+}
+
+Safe::SecureBinary Generic::SavePrivate(StorageFormat format) const noexcept {
+	try {
+		if (!m_private_key.has_value())
+			return {};
+		const Secure::Password privateKey = *m_private_key;
+		return EncodePrivate(privateKey, format);
+	} catch (...) {
+		return {};
+	}
+}
+
+Safe::SecureBinary Generic::SavePrivate(const Secure::Password& encryptPassword, StorageFormat format) const noexcept {
+	try {
+		if (!m_private_key.has_value())
+			return {};
+		const Secure::Password privateKey = *m_private_key;
+		return EncodePrivateEncrypted(privateKey, encryptPassword, format);
+	} catch (...) {
+		return {};
+	}
+}
+
 bool Generic::Save(PathView directoryView, std::string_view baseName, StorageFormat format) const noexcept {
 	try {
 		const std::filesystem::path directory{directoryView};
 		if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
 			return false;
-		if (m_public_key.empty())
-			return false;
 		Safe::String pubName(baseName);
 		pubName += ExtensionFor(format, true);
-		const auto pubPath = directory / std::filesystem::path(static_cast<std::string_view>(pubName));
-		if (!WritePublicFile(pubPath, m_public_key, format))
+		if (!WriteBytes(directory / std::filesystem::path(static_cast<std::string_view>(pubName)), SavePublic(format), false))
 			return false;
 		if (m_private_key.has_value()) {
 			Safe::String privName(baseName);
 			privName += ExtensionFor(format, false);
-			const auto privPath = directory / std::filesystem::path(static_cast<std::string_view>(privName));
-			const Secure::Password privateKey = *m_private_key;
-			if (!WritePrivateFile(privPath, privateKey, format))
-				return false;
+			return WriteBytes(directory / std::filesystem::path(static_cast<std::string_view>(privName)), SavePrivate(format), true);
 		}
-
 		return true;
 	} catch (...) {
 		return false;
@@ -1269,14 +1411,12 @@ bool Generic::Save(
 			return false;
 		Safe::String pubName(baseName);
 		pubName += ExtensionFor(format, true);
-		const auto pubPath = directory / std::filesystem::path(static_cast<std::string_view>(pubName));
-		if (!WritePublicFile(pubPath, m_public_key, format))
+		if (!WriteBytes(directory / std::filesystem::path(static_cast<std::string_view>(pubName)), SavePublic(format), false))
 			return false;
 		Safe::String privName(baseName);
 		privName += ExtensionFor(format, false);
-		const auto privPath = directory / std::filesystem::path(static_cast<std::string_view>(privName));
-		const Secure::Password privateKey = *m_private_key;
-		return WritePrivateFileEncrypted(privPath, privateKey, encryptPassword, format);
+		return WriteBytes(directory / std::filesystem::path(static_cast<std::string_view>(privName)),
+			SavePrivate(encryptPassword, format), true);
 	} catch (...) {
 		return false;
 	}
@@ -1284,10 +1424,7 @@ bool Generic::Save(
 
 bool Generic::SavePublic(PathView filePathView, StorageFormat format) const noexcept {
 	try {
-		const std::filesystem::path filePath{filePathView};
-		if (m_public_key.empty())
-			return false;
-		return WritePublicFile(filePath, m_public_key, format);
+		return WriteBytes(std::filesystem::path{filePathView}, SavePublic(format), false);
 	} catch (...) {
 		return false;
 	}
@@ -1295,11 +1432,7 @@ bool Generic::SavePublic(PathView filePathView, StorageFormat format) const noex
 
 bool Generic::SavePrivate(PathView filePathView, StorageFormat format) const noexcept {
 	try {
-		const std::filesystem::path filePath{filePathView};
-		if (!m_private_key.has_value())
-			return false;
-		const Secure::Password privateKey = *m_private_key;
-		return WritePrivateFile(filePath, privateKey, format);
+		return WriteBytes(std::filesystem::path{filePathView}, SavePrivate(format), true);
 	} catch (...) {
 		return false;
 	}
@@ -1311,11 +1444,7 @@ bool Generic::SavePrivate(
 	StorageFormat format
 ) const noexcept {
 	try {
-		const std::filesystem::path filePath{filePathView};
-		if (!m_private_key.has_value())
-			return false;
-		const Secure::Password privateKey = *m_private_key;
-		return WritePrivateFileEncrypted(filePath, privateKey, encryptPassword, format);
+		return WriteBytes(std::filesystem::path{filePathView}, SavePrivate(encryptPassword, format), true);
 	} catch (...) {
 		return false;
 	}
@@ -1343,188 +1472,64 @@ namespace StormByte::Crypto::KeyPair {
 		}
 	}
 
-	Generic::PointerType Load(PathView publicKeyPathView, PathView privateKeyPathView) noexcept {
+	Generic::PointerType Load(const Safe::SecureBinary& data) noexcept {
 		try {
-			const std::filesystem::path publicKeyPath{publicKeyPathView};
-			const std::filesystem::path privateKeyPath{privateKeyPathView};
-			Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
-			Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
-			bool privEncrypted = false;
-			WipeOnExit wipePrivate([&]() noexcept {
-				if (privDer)
-					SecureWipe(*privDer);
-			});
-			if (!publicKeyPath.empty() && std::filesystem::exists(publicKeyPath)) {
-				auto bytes = ReadFileBytes(publicKeyPath);
-				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-				if (bytes.empty())
-					return nullptr;
-				if (IsPemText(bytes)) {
-					auto blocks = PemDecodeAll(bytes);
-					WipeOnExit wipeBlocks([&]() noexcept {
-						for (auto& block : blocks)
-							SecureWipe(block.second);
-					});
-					for (auto& b : blocks) {
-						if (LabelIsPublic(b.first)) {
-							pubDer = std::move(b.second);
-							break;
-						}
-					}
-					if (!pubDer)
-						return nullptr;
-				} else {
-					pubDer = std::move(bytes);
-				}
-			}
-			if (!privateKeyPath.empty() && std::filesystem::exists(privateKeyPath)) {
-				auto bytes = ReadFileBytes(privateKeyPath);
-				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-				if (bytes.empty())
-					return nullptr;
-				if (IsPemText(bytes)) {
-					Safe::String text(bytes.begin(), bytes.end());
-					WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
-					auto blocks = PemDecodeAll(bytes);
-					WipeOnExit wipeBlocks([&]() noexcept {
-						for (auto& block : blocks)
-							SecureWipe(block.second);
-					});
-					for (auto& b : blocks) {
-						if (LabelIsPrivate(b.first)) {
-							privEncrypted = LabelIsEncrypted(b.first, text);
-							privDer = std::move(b.second);
-							break;
-						}
-					}
-					if (!privDer)
-						return nullptr;
-				} else {
-					privDer = std::move(bytes);
-				}
-			}
-			if (privEncrypted)
-				return nullptr;
-			Type hint = Type::RSA;
-			if (pubDer)
-				DetectTypeFromDer(*pubDer, hint);
-			else if (privDer)
-				DetectTypeFromDer(*privDer, hint);
-			return BuildFromMaterial(std::move(pubDer), std::move(privDer), hint);
+			return LoadFromBytes(AsCryptoBytes(data.span()), nullptr);
 		} catch (...) {
 			return nullptr;
 		}
 	}
 
-	Generic::PointerType Load(
-		PathView publicKeyPathView,
-		PathView privateKeyPathView,
-		const Secure::Password& password
-	) noexcept {
+	Generic::PointerType Load(const Safe::SecureBinary& data, const Secure::Password& password) noexcept {
 		try {
-			const std::filesystem::path publicKeyPath{publicKeyPathView};
-			const std::filesystem::path privateKeyPath{privateKeyPathView};
-			Safe::Optional<Safe::Vector<CryptoPP::byte>> pubDer;
-			Safe::Optional<Safe::Vector<CryptoPP::byte>> privDer;
-			bool privEncrypted = false;
-			WipeOnExit wipePrivate([&]() noexcept {
-				if (privDer)
-					SecureWipe(*privDer);
-			});
-			if (!publicKeyPath.empty() && std::filesystem::exists(publicKeyPath)) {
-				auto bytes = ReadFileBytes(publicKeyPath);
-				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-				if (bytes.empty())
-					return nullptr;
-				if (IsPemText(bytes)) {
-					auto blocks = PemDecodeAll(bytes);
-					WipeOnExit wipeBlocks([&]() noexcept {
-						for (auto& block : blocks)
-							SecureWipe(block.second);
-					});
-					for (auto& b : blocks) {
-						if (LabelIsPublic(b.first)) {
-							pubDer = std::move(b.second);
-							break;
-						}
-					}
-					if (!pubDer)
-						return nullptr;
-				} else {
-					pubDer = std::move(bytes);
-				}
-			}
-			if (!privateKeyPath.empty() && std::filesystem::exists(privateKeyPath)) {
-				auto bytes = ReadFileBytes(privateKeyPath);
-				WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-				if (bytes.empty())
-					return nullptr;
-				if (IsPemText(bytes)) {
-					Safe::String text(bytes.begin(), bytes.end());
-					WipeOnExit wipeText([&]() noexcept { SecureWipe(text); });
-					auto blocks = PemDecodeAll(bytes);
-					WipeOnExit wipeBlocks([&]() noexcept {
-						for (auto& block : blocks)
-							SecureWipe(block.second);
-					});
-					for (auto& b : blocks) {
-						if (LabelIsPrivate(b.first)) {
-							privEncrypted = LabelIsEncrypted(b.first, text);
-							privDer = std::move(b.second);
-							break;
-						}
-					}
-					if (!privDer)
-						return nullptr;
-				} else {
-					privDer = std::move(bytes);
-					privEncrypted = true;
-				}
-			}
-			if (!privDer)
-				return nullptr;
-			if (!TryDecryptPrivateDer(*privDer, privEncrypted, &password)) {
-				if (privEncrypted)
-					return nullptr;
-			}
-			Type hint = Type::RSA;
-			if (pubDer)
-				DetectTypeFromDer(*pubDer, hint);
-			else
-				DetectTypeFromDer(*privDer, hint);
-			return BuildFromMaterial(std::move(pubDer), std::move(privDer), hint);
+			return LoadFromBytes(AsCryptoBytes(data.span()), &password);
 		} catch (...) {
 			return nullptr;
 		}
 	}
 
-	Generic::PointerType Load(PathView pathView) noexcept {
+	Generic::PointerType Load(const Safe::SecureBinary& publicKey, const Safe::SecureBinary& privateKey) noexcept {
 		try {
-			const std::filesystem::path path{pathView};
-			if (path.empty() || !std::filesystem::exists(path))
-				return nullptr;
-			if (std::filesystem::is_directory(path))
-				return nullptr;
-			auto bytes = ReadFileBytes(path);
-			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-			return LoadFromBytes(bytes, nullptr);
+			return LoadPairFromBytes(AsCryptoBytes(publicKey.span()), AsCryptoBytes(privateKey.span()), nullptr);
 		} catch (...) {
 			return nullptr;
 		}
 	}
 
-	Generic::PointerType Load(PathView pathView, const Secure::Password& password) noexcept {
+	Generic::PointerType Load(const Safe::SecureBinary& publicKey, const Safe::SecureBinary& privateKey,
+		const Secure::Password& password) noexcept {
 		try {
-			const std::filesystem::path path{pathView};
-			if (path.empty() || !std::filesystem::exists(path))
-				return nullptr;
-			if (std::filesystem::is_directory(path))
-				return nullptr;
-			auto bytes = ReadFileBytes(path);
-			WipeOnExit wipeBytes([&]() noexcept { SecureWipe(bytes); });
-			return LoadFromBytes(bytes, &password);
+			return LoadPairFromBytes(AsCryptoBytes(publicKey.span()), AsCryptoBytes(privateKey.span()), &password);
 		} catch (...) {
 			return nullptr;
 		}
+	}
+
+	Generic::PointerType Load(PathView publicKeyPath, PathView privateKeyPath) noexcept {
+		Safe::SecureBinary publicKey, privateKey;
+		if (!ReadOptionalFile(publicKeyPath, publicKey) || !ReadOptionalFile(privateKeyPath, privateKey))
+			return nullptr;
+		return Load(publicKey, privateKey);
+	}
+
+	Generic::PointerType Load(PathView publicKeyPath, PathView privateKeyPath, const Secure::Password& password) noexcept {
+		Safe::SecureBinary publicKey, privateKey;
+		if (!ReadOptionalFile(publicKeyPath, publicKey) || !ReadOptionalFile(privateKeyPath, privateKey))
+			return nullptr;
+		return Load(publicKey, privateKey, password);
+	}
+
+	Generic::PointerType Load(PathView path) noexcept {
+		Safe::SecureBinary bytes;
+		if (!ReadKeyFile(path, bytes))
+			return nullptr;
+		return Load(bytes);
+	}
+
+	Generic::PointerType Load(PathView path, const Secure::Password& password) noexcept {
+		Safe::SecureBinary bytes;
+		if (!ReadKeyFile(path, bytes))
+			return nullptr;
+		return Load(bytes, password);
 	}
 }
