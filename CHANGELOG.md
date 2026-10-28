@@ -20,6 +20,10 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+### Changed
+
+- Bundled builds use Base 2.2.2. Require BuildMaster 2.1.3 and pin its bundled submodule to the published release.
+
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.0...HEAD
 
 ## [2.2.0] - 2026-10-26
