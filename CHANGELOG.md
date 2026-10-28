@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.0) 2.2.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.3, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.3 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
 Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, X509, Random, Password and Vault. Crypto++ never leaves the private tree.
 
@@ -20,11 +20,15 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...HEAD
+
+## [2.2.1] - 2026-10-28
+
 ### Changed
 
-- Bundled builds use Base 2.2.2. Require BuildMaster 2.1.3 and pin its bundled submodule to the published release.
+- Bundled builds use Base 2.2.2, Buffer 2.0.5, Logger 2.0.5 and System 2.1.2. Require BuildMaster 2.1.3 and pin its bundled submodule to the published release.
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.0...HEAD
+[2.2.1]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.0...2.2.1
 
 ## [2.2.0] - 2026-10-26
 
