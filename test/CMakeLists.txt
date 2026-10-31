@@ -5,6 +5,11 @@ if(ENABLE_TEST)
 	add_library(tests INTERFACE)
 	target_include_directories(tests INTERFACE ${CMAKE_CURRENT_LIST_DIR})
 
+	add_executable(StreamErrorTests stream_error_test.cxx)
+	target_link_libraries(StreamErrorTests StormByte::Crypto tests)
+	add_test(NAME StreamErrorTests COMMAND StreamErrorTests)
+	set_tests_properties(StreamErrorTests PROPERTIES LABELS "crypter;hasher;stream" TIMEOUT 180)
+
 	add_subdirectory(compressor)
 	add_subdirectory(crypter)
 	add_subdirectory(hasher)

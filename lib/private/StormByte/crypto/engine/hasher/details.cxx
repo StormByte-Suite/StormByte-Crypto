@@ -87,6 +87,11 @@ Consumer StormByte::Crypto::Engine::Hasher::Stream(
 		auto callback = Crypto::Helpers::MakeCallback<>([consumer = std::move(consumer), producer, ops = std::move(ops), mode]() mutable {
 			try {
 				while (!consumer.EoF()) {
+					if (consumer.HasError()) {
+						producer.SetError();
+						return;
+					}
+
 					const ByteSize available = consumer.Available();
 					if (available == ByteSize{0}) {
 						Safe::this_thread::yield();
@@ -104,6 +109,11 @@ Consumer StormByte::Crypto::Engine::Hasher::Stream(
 					}
 
 					ops->Update(std::span<const std::byte>(data.data(), static_cast<std::size_t>(data.size())));
+				}
+
+				if (consumer.HasError()) {
+					producer.SetError();
+					return;
 				}
 
 				Safe::Binary result;

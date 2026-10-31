@@ -99,6 +99,11 @@ Consumer StormByte::Crypto::Engine::Crypter::Stream(
 		auto owner = Safe::Shared<Safe::Unique<Ops>>::MakePointer<Safe::Unique<Ops>>(std::move(ops));
 		auto callback = Crypto::Helpers::MakeCallback<>([consumer = std::move(consumer), producer, owner = std::move(owner), mode]() mutable {
 			try {
+				if (consumer.HasError()) {
+					producer.SetError();
+					return;
+				}
+
 				auto& engine = *owner;
 				Safe::Binary outChunk;
 				if (!engine->WriteHeader(outChunk)) {
@@ -118,6 +123,11 @@ Consumer StormByte::Crypto::Engine::Crypter::Stream(
 				}
 
 				while (!consumer.EoF()) {
+					if (consumer.HasError()) {
+						producer.SetError();
+						return;
+					}
+
 					const ByteSize available = consumer.Available();
 					if (available == ByteSize{0}) {
 						Safe::this_thread::yield();
@@ -145,6 +155,11 @@ Consumer StormByte::Crypto::Engine::Crypter::Stream(
 					}
 
 					outChunk.clear();
+				}
+
+				if (consumer.HasError()) {
+					producer.SetError();
+					return;
 				}
 
 				if (!engine->Finalize(outChunk)) {

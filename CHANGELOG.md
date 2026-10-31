@@ -20,6 +20,10 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+### Fixed
+
+- Propagate upstream consumer errors in streaming encryption, decryption and hashing instead of treating them as clean EOF and finalizing successfully. Add regression coverage for all six symmetric ciphers, RSA/ECC Native and Hybrid streams, and all six hash algorithms in Copy/Move modes, including initial and delayed errors and clean controls.
+
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...HEAD
 
 ## [2.2.1] - 2026-10-28
