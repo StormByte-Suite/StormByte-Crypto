@@ -43,7 +43,7 @@ if(WIN32 OR APPLE)
 	add_executable(X509NativeTrustTests native_trust_test.cxx
 		"${PROJECT_SOURCE_DIR}/lib/private/StormByte/crypto/x509/native_trust.cxx")
 	target_compile_definitions(X509NativeTrustTests PRIVATE STORMBYTE_CRYPTO_TRUST_TESTING)
-	target_link_libraries(X509NativeTrustTests StormByte::Crypto tests)
+	target_link_libraries(X509NativeTrustTests PRIVATE StormByte::Crypto tests)
 	if(WIN32)
 		target_link_libraries(X509NativeTrustTests PRIVATE crypt32)
 	else()
