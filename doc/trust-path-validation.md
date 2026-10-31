@@ -82,28 +82,56 @@ installs the CA nor widens production bundled trust. Root certificate validity
 is enforced even where native abstract-anchor policy might otherwise ignore it.
 Custom path success still asserts **no revocation or authentication**.
 
-## Mandatory payment revocation: NOT COMPLETE
+## Mandatory payment revocation evidence
 
-`VerifyPaymentPeer` first performs bundled path validation. Invalid paths return
-`PaymentPeerError::TrustPathRejected`. Even a valid path returns
-**`PaymentPeerError::RevocationUnavailable`**. This unit has no success branch
-and accepts no caller-forgeable “revocation checked” flag.
+`VerifyPaymentPeer` performs bundled path validation and requires one verified
+revocation response for the leaf and every intermediate, in chain order; the
+trust anchor is excluded. It succeeds only when each response is fresh, signed
+by the issuing CA or an authorized responder, bound to that certificate and
+reports `Good`. Invalid paths return `TrustPathRejected`; missing evidence
+returns `RevocationUnavailable`; malformed, mismatched, stale, unsupported or
+unauthorized evidence returns `RevocationEvidenceRejected`; `Revoked` and
+`Unknown` statuses have distinct failures. It does not accept a caller-forgeable
+“revocation checked” flag.
 
-Actual signed CRL/OCSP evidence validation, issuer/responder authorization,
-freshness, certificate binding and hard-fail handling of **absent, unknown,
-stale, invalid or revoked** evidence are mandatory subsequent work. Native
-path success, cached native hints, a successful OpenSSL probe, and this bundle
-are not substitutes. Payment peer authentication and the TLS engine must not
-be claimed complete or enabled based on these path-only results. Proof of key
-possession/CertificateVerify also remains outside this operation.
+`RevocationVerifier` accepts caller-supplied DER and an explicit time. It does
+no network, filesystem, native trust-store, cache or clock access. CRLs must be
+complete, direct, issuer-wide and have `nextUpdate`; delta/indirect CRLs,
+distribution-point restrictions and unknown extensions fail closed. OCSP must
+be a successful `BasicOCSPResponse` with one matching `SingleResponse` and a
+bounded `nextUpdate`. SHA-1/SHA-256/SHA-384/SHA-512 `CertID` hashes are
+supported. CRL/OCSP signatures use the certificate verifier's SHA-2 RSA
+PKCS#1 v1.5 or ECDSA algorithms; SHA-1 and RSA-PSS signatures are unsupported.
+A signer may be the issuer or an embedded certificate directly issued by it,
+valid at `producedAt`, with `id-kp-OCSPSigning`, `digitalSignature`, and a
+non-critical DER-NULL `id-pkix-ocsp-nocheck` extension. Evidence larger than
+4 MiB and unimplemented extensions or scopes are rejected.
+
+OCSP response and per-certificate extensions (including nonce) are deliberately
+unsupported: the network caller must not request a nonce unless Crypto gains an
+API to bind and verify the corresponding request nonce. Freshness is enforced
+using the explicit validation time and signed `thisUpdate`, `nextUpdate`, and
+`producedAt` values. Absence, `Unknown`, stale, invalid, unsupported or revoked
+evidence never becomes `Good`.
+
+This is revocation evidence validation, not a network client or complete TLS
+peer authentication. Native path success, cached native hints, a successful
+OpenSSL probe, and this bundle are not substitutes. Proof of key
+possession/CertificateVerify and the TLS engine remain outside this operation.
 
 ## Offline tests and observed compatibility
 
-The original 43 CTest registrations are unchanged. Two Linux registrations
-exercise the new API, with one replay under hostile/nonexistent CA environment
-settings. Tests cover snapshot integrity/provenance/exclusions, independent
+The original 43 CTest registrations are unchanged. Three additional Linux
+registrations exercise path and revocation behavior, including a replay under
+hostile/nonexistent CA environment settings. Revocation fixtures are generated
+offline with OpenSSL using disposable private keys; tests consume only the
+checked-in public certificates, CRL and OCSP DER data and need no OpenSSL at
+runtime. Coverage includes CRL/OCSP Good, Revoked, Unknown, future revocation
+dates, direct/delegated/unauthorized responders, freshness, target binding,
+signature tampering, malformed input, size limits and fail-closed missing
+payment evidence. Snapshot integrity/provenance/exclusions, independent
 copies, custom separation, invalid requests, unsupported Linux constraints,
-purpose/time failures and real public-chain path validation.
+purpose/time failures and real public-chain path validation remain covered.
 Top-level CTest discovery is enabled when `ENABLE_TEST` is on, so both
 `ctest --test-dir build` and `ctest --test-dir build/test` run the suite.
 
@@ -135,8 +163,9 @@ leaf and intermediate in this observation:
 - an ECDSA-only signature-policy probe failed the handshake.
 
 The captured chains **pass the actual Linux bundled path verifier** at
-2026-10-31 for both expected hostnames; payment verification still fails
-`RevocationUnavailable`. This is reference-chain compatibility, **not a claim
-that StormByte TLS or PayPal integration works**. TLS RSA-PSS signature vocabulary,
+2026-10-31 for both expected hostnames. No PayPal revocation evidence is
+included in these path fixtures, so `VerifyPaymentPeer` correctly fails closed
+with `RevocationUnavailable`. This is reference-chain compatibility, **not a
+claim that StormByte TLS or PayPal integration works**. TLS RSA-PSS signature vocabulary,
 signing and transcript verification require a separate future unit. The bundle
 contains the wider curated server-root set, not only today's PayPal issuer.

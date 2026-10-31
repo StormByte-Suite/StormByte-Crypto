@@ -31,6 +31,11 @@ target_link_libraries(X509TrustPathTests StormByte::Crypto tests)
 add_test(NAME X509TrustPathTests COMMAND X509TrustPathTests)
 set_tests_properties(X509TrustPathTests PROPERTIES LABELS "x509;trust-path")
 
+add_executable(X509RevocationTests revocation_test.cxx)
+target_link_libraries(X509RevocationTests StormByte::Crypto tests)
+add_test(NAME X509RevocationTests COMMAND X509RevocationTests)
+set_tests_properties(X509RevocationTests PROPERTIES LABELS "x509;revocation")
+
 # Verify that Linux ignores even hostile trust environment settings.
 if(NOT WIN32 AND NOT APPLE)
 	add_test(NAME X509TrustPathEnvironmentTests COMMAND X509TrustPathTests)

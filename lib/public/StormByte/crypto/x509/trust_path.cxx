@@ -154,8 +154,32 @@ ExpectedTrustPath StormByte::Crypto::X509::ValidateCustomCATLSPath(const Certifi
 }
 
 ExpectedPaymentPeer StormByte::Crypto::X509::VerifyPaymentPeer(const Certificate& leaf,
-	std::span<const Certificate> intermediates, TimePoint at, const SubjectAltName& identity) {
-	if (!ValidateBundledTLSPath(leaf, intermediates, at, identity))
+	std::span<const Certificate> intermediates, const Certificate& anchor, TimePoint at,
+	const SubjectAltName& identity, std::span<const RevocationEvidence> evidence) {
+	if (anchor.Der().empty())
 		return StormByte::Unexpected(PaymentPeerError::TrustPathRejected);
-	return StormByte::Unexpected(PaymentPeerError::RevocationUnavailable);
+	const auto roots = LoadBundledTLSRoots();
+	if (!roots)
+		return StormByte::Unexpected(PaymentPeerError::TrustPathRejected);
+	const bool admitted = std::ranges::any_of(*roots, [&anchor](const Certificate& root) {
+		return root == anchor;
+	});
+	if (!admitted || !TLSPeerVerifier::Verify(leaf, intermediates, anchor, at, TLSRole::Server, &identity)
+		|| !ValidateBundledTLSPath(leaf, intermediates, at, identity))
+		return StormByte::Unexpected(PaymentPeerError::TrustPathRejected);
+	if (evidence.size() != intermediates.size() + 1)
+		return StormByte::Unexpected(PaymentPeerError::RevocationUnavailable);
+	for (std::size_t index = 0; index <= intermediates.size(); ++index) {
+		const Certificate& certificate = index == 0 ? leaf : intermediates[index - 1];
+		const Certificate& issuer = index == intermediates.size() ? anchor : intermediates[index];
+		const auto result = RevocationVerifier::Verify(certificate, issuer,
+			evidence[index].format, evidence[index].der, at);
+		if (!result)
+			return StormByte::Unexpected(PaymentPeerError::RevocationEvidenceRejected);
+		if (*result == RevocationStatus::Revoked)
+			return StormByte::Unexpected(PaymentPeerError::CertificateRevoked);
+		if (*result == RevocationStatus::Unknown)
+			return StormByte::Unexpected(PaymentPeerError::RevocationUnknown);
+	}
+	return {};
 }

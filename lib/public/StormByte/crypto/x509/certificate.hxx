@@ -73,6 +73,7 @@ namespace StormByte {
 			 * @brief Point in time with second precision, as stored in certificates.
 			 */
 			using TimePoint = std::chrono::sys_seconds;
+			class RevocationVerifier;
 
 			/**
 			 * @enum KeyUsage
@@ -538,6 +539,7 @@ namespace StormByte {
 					};
 
 					friend class TLSPeerVerifier;	///< Additive peer composition shares immutable parser state.
+					friend class RevocationVerifier;	///< Offline CRL/OCSP verification shares parsed certificate state.
 
 					Safe::Binary m_der;						///< Original DER encoding.
 					Range m_tbs;							///< Full TBSCertificate element.
@@ -569,6 +571,16 @@ namespace StormByte {
 					 * @return Borrowed bytes.
 					 */
 					std::span<const std::byte> View(const Range& range) const noexcept;
+
+					/**
+					 * @brief Verifies signed DER data with this certificate's public key.
+					 * @param algorithm Full signature AlgorithmIdentifier.
+					 * @param message Signed DER bytes.
+					 * @param signature Signature bytes without the BIT STRING unused-bits byte.
+					 * @return Whether the supported signature algorithm verifies.
+					 */
+					bool VerifySignedData(std::span<const std::byte> algorithm,
+						std::span<const std::byte> message, std::span<const std::byte> signature) const noexcept;
 			};
 		}
 	}

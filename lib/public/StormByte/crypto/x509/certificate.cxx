@@ -972,6 +972,11 @@ bool Certificate::IsIssuedBy(const Certificate& issuer) const noexcept {
 			View(m_signature));
 }
 
+bool Certificate::VerifySignedData(std::span<const std::byte> algorithm, std::span<const std::byte> message,
+	std::span<const std::byte> signature) const noexcept {
+	return !m_der.empty() && VerifySignature(algorithm, View(m_public_key), message, signature);
+}
+
 bool Certificate::VerifyChain(std::span<const Certificate> intermediates, const Certificate& anchor,
 	TimePoint at) const noexcept {
 	const std::size_t length = intermediates.size() + 1;

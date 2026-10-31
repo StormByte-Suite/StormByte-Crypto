@@ -105,7 +105,6 @@ int test_custom_separation() {
 #else
 	ASSERT_EQUAL(TrustPathError::RootNotAdmitted, *bundled.error());
 #endif
-	ASSERT_TRUE(!VerifyPaymentPeer(leaf, chain, leaf.NotBefore(), DNS()));
 	ASSERT_TRUE(!ValidateCustomCATLSPath(leaf, chain, Cert(Rogue), leaf.NotBefore(), DNS()));
 	RETURN_TEST(0);
 }
@@ -164,7 +163,12 @@ int test_public_reference_paths() {
 		std::array{Cert(SandboxIntermediate)}, ReferenceTime, DNS("api-m.sandbox.paypal.com"))));
 	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, {}, ReferenceTime, DNS("api-m.paypal.com")));
 	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, leaf.NotAfter() + std::chrono::seconds(1), DNS("api-m.paypal.com")));
-	const auto payment = VerifyPaymentPeer(leaf, chain, ReferenceTime, DNS("api-m.paypal.com"));
+	const auto root = std::ranges::find_if(*roots, [](const Certificate& candidate) {
+		return static_cast<std::string_view>(candidate.SubjectCommonName()) == "DigiCert Global Root G2";
+	});
+	ASSERT_TRUE(root != roots->end());
+	const auto payment = VerifyPaymentPeer(leaf, chain, *root, ReferenceTime,
+		DNS("api-m.paypal.com"), {});
 	ASSERT_TRUE(!payment);
 	ASSERT_EQUAL(PaymentPeerError::RevocationUnavailable, *payment.error());
 #endif

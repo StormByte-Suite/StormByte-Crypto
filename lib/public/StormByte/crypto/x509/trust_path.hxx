@@ -41,6 +41,7 @@
 #pragma once
 
 #include <StormByte/crypto/x509/tls_peer.hxx>
+#include <StormByte/crypto/x509/revocation.hxx>
 
 /**
  * @namespace StormByte
@@ -71,11 +72,14 @@ namespace StormByte {
 
 			/**
 			 * @enum PaymentPeerError
-			 * @brief Fail-closed payment peer failures until mandatory revocation is implemented.
+			 * @brief Fail-closed payment peer failures.
 			 */
 			enum class PaymentPeerError {
-				TrustPathRejected,		///< Path validation failed before revocation processing.
-				RevocationUnavailable	///< No authenticated, fresh CRL/OCSP evidence can be validated yet.
+				TrustPathRejected,		///< Path or selected bundled anchor validation failed.
+				RevocationUnavailable,		///< Evidence is missing for at least one non-anchor certificate.
+				RevocationEvidenceRejected,	///< Any evidence is malformed, invalid, stale or unauthorized.
+				CertificateRevoked,		///< A validated CRL or OCSP response reports revocation.
+				RevocationUnknown		///< A validated OCSP response reports unknown status.
 			};
 
 			/**
@@ -89,7 +93,7 @@ namespace StormByte {
 			using ExpectedTrustPath = StormByte::Expected<void, TrustPathError>;
 
 			/**
-			 * @brief Payment verification result; this unit never returns success.
+			 * @brief Payment peer trust and revocation result.
 			 */
 			using ExpectedPaymentPeer = StormByte::Expected<void, PaymentPeerError>;
 
@@ -149,18 +153,22 @@ namespace StormByte {
 				TimePoint at, const SubjectAltName& identity);
 
 			/**
-			 * @brief Fails closed after path validation because payment revocation is mandatory.
+			 * @brief Validates the bundled path and all non-anchor certificates' revocation status.
 			 * @param leaf Untrusted server certificate.
 			 * @param intermediates Issuers, excluding leaf and root.
+			 * @param anchor Exact bundled trust anchor for this chain.
 			 * @param at Explicit validation time.
 			 * @param identity Expected payment endpoint DNS or IP identity.
-			 * @return TrustPathRejected or RevocationUnavailable; never success.
+			 * @param evidence One CRL or OCSP response per leaf/intermediate in chain order.
+			 *        The trust anchor is excluded. Each response is borrowed for this call.
+			 * @return Success only when path and every required revocation status are valid and Good.
 			 * @throws StormByte::Safe::AllocationError Storage cannot be allocated.
-			 * @note Absent, unknown, stale or invalid revocation evidence must fail. No caller
-			 *       flag can bypass this gate. Actual CRL/OCSP validation is a mandatory next unit.
+			 * @note Missing, unknown, stale, invalid or revoked evidence fails closed. Crypto
+			 *       performs no network, filesystem, native store or cache access.
 			 */
 			STORMBYTE_CRYPTO_PUBLIC ExpectedPaymentPeer VerifyPaymentPeer(const Certificate& leaf,
-				std::span<const Certificate> intermediates, TimePoint at, const SubjectAltName& identity);
+				std::span<const Certificate> intermediates, const Certificate& anchor, TimePoint at,
+				const SubjectAltName& identity, std::span<const RevocationEvidence> evidence);
 		}
 	}
 }
