@@ -18,3 +18,10 @@ add_test(NAME X509PurposeTests COMMAND X509PurposeTests)
 set_tests_properties(X509PurposeTests PROPERTIES
 	LABELS "x509;purpose"
 )
+
+add_executable(X509TLSPeerTests tls_peer_test.cxx)
+target_link_libraries(X509TLSPeerTests StormByte::Crypto tests)
+add_test(NAME X509TLSPeerTests COMMAND X509TLSPeerTests)
+set_tests_properties(X509TLSPeerTests PROPERTIES
+	LABELS "x509;tls-peer"
+)

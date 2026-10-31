@@ -40,6 +40,7 @@
 
 #include <StormByte/crypto/rng.hxx>
 #include <StormByte/crypto/x509/certificate.hxx>
+#include <StormByte/crypto/x509/tls_peer.hxx>
 
 #include <base64.h>
 #include <dsa.h>
@@ -997,4 +998,280 @@ bool Certificate::VerifyChain(std::span<const Certificate> intermediates, const 
 bool Certificate::VerifyChain(std::span<const Certificate> intermediates, const Certificate& anchor) const noexcept {
 	return VerifyChain(intermediates, anchor,
 		std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+}
+
+namespace {
+	/**
+	 * @brief Checks the bounded signature-algorithm subset before signature verification.
+	 * @param data Full signature AlgorithmIdentifier.
+	 * @return true for supported SHA-2 RSA/ECDSA and valid parameters.
+	 */
+	bool IsPeerSignatureAlgorithm(Bytes data) noexcept {
+		Reader reader(data, 0, data.size());
+		Element sequence;
+		Bytes oid, parameters;
+		if (!reader.Next(TagSequence, sequence) || !reader.AtEnd()
+			|| !ReadAlgorithm(data, sequence, oid, parameters))
+			return false;
+		if (Equals(oid, OidEcdsaSha256) || Equals(oid, OidEcdsaSha384) || Equals(oid, OidEcdsaSha512))
+			return parameters.empty();
+		if (!Equals(oid, OidRsaSha256) && !Equals(oid, OidRsaSha384) && !Equals(oid, OidRsaSha512))
+			return false;
+		constexpr std::uint8_t Null[] = {TagNull, 0};
+		return parameters.empty() || Equals(parameters, Null);
+	}
+
+	/**
+	 * @brief Validates a public key against the bounded peer-key policy.
+	 * @param data Full SubjectPublicKeyInfo.
+	 * @return true for a validated RSA 2048..8192 or ECDSA P-256/P-384/P-521 key.
+	 * @throws StormByte::Safe::AllocationError Crypto operations cannot allocate Safe state.
+	 */
+	bool IsPeerPublicKey(Bytes data) {
+		Reader reader(data, 0, data.size());
+		Element sequence, algorithm, bits;
+		Bytes oid, parameters;
+		if (!reader.Next(TagSequence, sequence) || !reader.AtEnd())
+			return false;
+		Reader fields(data, sequence);
+		if (!fields.Next(TagSequence, algorithm) || !ReadAlgorithm(data, algorithm, oid, parameters)
+			|| !fields.Next(TagBitString, bits) || !fields.AtEnd() || bits.length < 2
+			|| data[bits.value] != std::byte{0})
+			return false;
+		try {
+			CryptoPP::ArraySource source(Raw(data), data.size(), true);
+			if (Equals(oid, OidRsaEncryption)) {
+				constexpr std::uint8_t Null[] = {TagNull, 0};
+				if (!parameters.empty() && !Equals(parameters, Null))
+					return false;
+				CryptoPP::RSA::PublicKey key;
+				key.Load(source);
+				const auto bits = key.GetModulus().BitCount();
+				return bits >= 2048 && bits <= 8192 && key.Validate(StormByte::Crypto::RNG(), 3);
+			}
+			if (!Equals(oid, OidEcPublicKey))
+				return false;
+			constexpr std::uint8_t P256[] = {TagOid, 8, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+			constexpr std::uint8_t P384[] = {TagOid, 5, 0x2B, 0x81, 0x04, 0x00, 0x22};
+			constexpr std::uint8_t P521[] = {TagOid, 5, 0x2B, 0x81, 0x04, 0x00, 0x23};
+			if (!Equals(parameters, P256) && !Equals(parameters, P384) && !Equals(parameters, P521))
+				return false;
+			CryptoPP::ECDSA<CryptoPP::ECP, CryptoPP::SHA256>::PublicKey key;
+			key.Load(source);
+			return key.Validate(StormByte::Crypto::RNG(), 3);
+		} catch (const CryptoPP::Exception&) {
+			return false;
+		}
+	}
+
+	/**
+	 * @brief Audits extension restrictions not enforced by legacy chain verification.
+	 * @param data Full TBSCertificate.
+	 * @param index Leaf-to-anchor position.
+	 * @return Success or an indexed unsupported/malformed extension failure.
+	 */
+	ExpectedTLSPeer CheckPeerExtensions(Bytes data, std::size_t index) {
+		const auto fail = [index](TLSPeerError code) {
+			return ExpectedTLSPeer(StormByte::Unexpected(TLSPeerFailure(code, index)));
+		};
+		Reader holder(data, 0, data.size());
+		Element sequence, element;
+		if (!holder.Next(TagSequence, sequence) || !holder.AtEnd())
+			return fail(TLSPeerError::MalformedExtension);
+		Reader fields(data, sequence);
+		if (fields.Peek(TagVersion))
+			fields.Next(element);
+		for (unsigned i = 0; i < 6; ++i)
+			if (!fields.Next(element))
+				return fail(TLSPeerError::MalformedExtension);
+		for (const auto tag : {TagIssuerUid, TagSubjectUid})
+			if (fields.Peek(tag))
+				fields.Next(element);
+		if (fields.AtEnd())
+			return {};
+		Element wrapper, list;
+		if (!fields.Next(TagExtensions, wrapper) || !fields.AtEnd())
+			return fail(TLSPeerError::MalformedExtension);
+		Reader wrapper_reader(data, wrapper);
+		if (!wrapper_reader.Next(TagSequence, list) || !wrapper_reader.AtEnd())
+			return fail(TLSPeerError::MalformedExtension);
+		Reader extensions(data, list);
+		while (!extensions.AtEnd()) {
+			Element extension, oid, value;
+			if (!extensions.Next(TagSequence, extension))
+				return fail(TLSPeerError::MalformedExtension);
+			Reader entries(data, extension);
+			if (!entries.Next(TagOid, oid) || !IsValidOid(Contents(data, oid)))
+				return fail(TLSPeerError::MalformedExtension);
+			bool critical = false;
+			if (entries.Peek(TagBoolean)) {
+				entries.Next(element);
+				if (!ReadBoolean(Contents(data, element), critical) || !critical)
+					return fail(TLSPeerError::MalformedExtension);
+			}
+			if (!entries.Next(TagOctetString, value) || !entries.AtEnd())
+				return fail(TLSPeerError::MalformedExtension);
+			const Bytes id = Contents(data, oid);
+			// These extensions restrict a path independently of their critical flag.
+			constexpr std::uint8_t NameConstraints[] = {0x55, 0x1D, 0x1E};
+			constexpr std::uint8_t PolicyMappings[] = {0x55, 0x1D, 0x21};
+			constexpr std::uint8_t PolicyConstraints[] = {0x55, 0x1D, 0x24};
+			constexpr std::uint8_t InhibitAnyPolicy[] = {0x55, 0x1D, 0x36};
+			constexpr std::uint8_t TLSFeature[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x18};
+			constexpr std::uint8_t ProxyCertInfo[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x0E};
+			if (Equals(id, NameConstraints) || Equals(id, PolicyMappings)
+				|| Equals(id, PolicyConstraints) || Equals(id, InhibitAnyPolicy)
+				|| Equals(id, TLSFeature) || Equals(id, ProxyCertInfo))
+				return fail(TLSPeerError::UnsupportedConstraint);
+			if (Equals(id, OidBasicConstraints)) {
+				Reader constraints(data, value);
+				Element basic;
+				if (!constraints.Next(TagSequence, basic) || !constraints.AtEnd())
+					return fail(TLSPeerError::MalformedExtension);
+				Reader content(data, basic);
+				bool ca = false;
+				if (content.Peek(TagBoolean)) {
+					content.Next(element);
+					if (!ReadBoolean(Contents(data, element), ca) || !ca)
+						return fail(TLSPeerError::MalformedExtension);
+				}
+				if (ca && !critical)
+					return fail(TLSPeerError::MalformedExtension);
+			}
+			else if (critical && !Equals(id, OidKeyUsage) && !Equals(id, OidExtendedKeyUsage)
+				&& !Equals(id, OidSubjectAltName))
+				return fail(TLSPeerError::UnsupportedCriticalExtension);
+			if (critical && Equals(id, OidSubjectAltName)) {
+				Reader names_holder(data, value);
+				Element names;
+				if (!names_holder.Next(TagSequence, names) || !names_holder.AtEnd())
+					return fail(TLSPeerError::MalformedExtension);
+				Reader names_reader(data, names);
+				while (!names_reader.AtEnd()) {
+					if (!names_reader.Next(element))
+						return fail(TLSPeerError::MalformedExtension);
+					if (element.tag != 0x82 && element.tag != 0x87)
+						return fail(TLSPeerError::UnsupportedCriticalExtension);
+				}
+			}
+		}
+		return {};
+	}
+}
+
+TLSPeerFailure::TLSPeerFailure() noexcept: TLSPeerFailure(TLSPeerError::InvalidCertificate) {}
+
+TLSPeerFailure::TLSPeerFailure(TLSPeerError code, std::size_t index) noexcept:
+	m_code(code), m_index(index), m_purpose(PurposeError::InvalidCertificate),
+	m_identity(IdentityError::NoMatch) {}
+
+TLSPeerFailure::TLSPeerFailure(PurposeError detail, std::size_t index) noexcept:
+	TLSPeerFailure(TLSPeerError::Purpose, index) {
+	m_purpose = detail;
+}
+
+TLSPeerFailure::TLSPeerFailure(IdentityError detail, std::size_t index) noexcept:
+	TLSPeerFailure(TLSPeerError::Identity, index) {
+	m_identity = detail;
+}
+
+TLSPeerFailure::TLSPeerFailure(const TLSPeerFailure& other) noexcept = default;
+
+TLSPeerFailure::TLSPeerFailure(TLSPeerFailure&& other) noexcept = default;
+
+TLSPeerFailure::~TLSPeerFailure() noexcept = default;
+
+TLSPeerFailure& TLSPeerFailure::operator=(const TLSPeerFailure& other) noexcept = default;
+
+TLSPeerFailure& TLSPeerFailure::operator=(TLSPeerFailure&& other) noexcept = default;
+
+TLSPeerError TLSPeerFailure::Code() const noexcept {
+	return m_code;
+}
+
+std::size_t TLSPeerFailure::CertificateIndex() const noexcept {
+	return m_index;
+}
+
+PurposeError TLSPeerFailure::PurposeDetail() const noexcept {
+	return m_purpose;
+}
+
+IdentityError TLSPeerFailure::IdentityDetail() const noexcept {
+	return m_identity;
+}
+
+ExpectedTLSPeer TLSPeerVerifier::Verify(const Certificate& leaf,
+	std::span<const Certificate> intermediates, const Certificate& anchor,
+	TimePoint at, TLSRole role, const SubjectAltName* identity) {
+	const auto fail = [](TLSPeerError code, std::size_t index = 0) {
+		return ExpectedTLSPeer(StormByte::Unexpected(TLSPeerFailure(code, index)));
+	};
+	if (role != TLSRole::Server && role != TLSRole::Client)
+		return fail(TLSPeerError::UnsupportedRole);
+	if (!identity && role == TLSRole::Server)
+		return fail(TLSPeerError::MissingServerIdentity);
+	if (identity && identity->Type() != SubjectAltNameType::DNS && identity->Type() != SubjectAltNameType::IP)
+		return fail(TLSPeerError::UnsupportedIdentity);
+	const std::size_t last = intermediates.size() + 1;
+	const auto certificate_at = [&](std::size_t index) -> const Certificate& {
+		return index == 0 ? leaf : index == last ? anchor : intermediates[index - 1];
+	};
+	for (std::size_t index = 0; index <= last; ++index) {
+		const auto& certificate = certificate_at(index);
+		if (certificate.m_der.empty())
+			return fail(TLSPeerError::InvalidCertificate, index);
+		if (!certificate.IsValidAt(at))
+			return fail(TLSPeerError::InvalidTime, index);
+		if (index == 0 && certificate.IsCA())
+			return fail(TLSPeerError::LeafIsCA);
+		if (certificate.m_has_subject_alt_name) {
+			const auto names = certificate.SubjectAltNames();
+			if (!names)
+				return StormByte::Unexpected(TLSPeerFailure(*names.error(), index));
+		}
+		const auto extensions = CheckPeerExtensions(certificate.View(certificate.m_tbs), index);
+		if (!extensions)
+			return extensions;
+		if (index == 0) {
+			const auto purpose = certificate.VerifyTLSPurpose(role);
+			if (!purpose)
+				return StormByte::Unexpected(TLSPeerFailure(*purpose.error(), index));
+		}
+		else {
+			bool allowed = true;
+			if (certificate.m_has_extended_key_usage
+				&& !ReadTLSExtendedKeyUsage(certificate.View(certificate.m_extended_key_usage), role, allowed))
+				return StormByte::Unexpected(TLSPeerFailure(PurposeError::MalformedExtendedKeyUsage, index));
+			if (certificate.m_has_key_usage && !IsValidTLSKeyUsage(certificate.View(certificate.m_key_usage_der)))
+				return StormByte::Unexpected(TLSPeerFailure(PurposeError::MalformedKeyUsage, index));
+			if (!allowed)
+				return StormByte::Unexpected(TLSPeerFailure(PurposeError::ExtendedKeyUsageNotAllowed, index));
+			if (certificate.Version() != 3 || !certificate.IsCA())
+				return fail(TLSPeerError::NotCA, index);
+			if (!certificate.HasKeyUsage(KeyUsage::KeyCertSign))
+				return fail(TLSPeerError::IssuerKeyUsageNotAllowed, index);
+			if (certificate.m_has_path_length && index - 1 > certificate.m_path_length)
+				return fail(TLSPeerError::PathLengthExceeded, index);
+		}
+		if (certificate.m_has_key_usage && !certificate.HasKeyUsage(KeyUsage::KeyAgreement)
+			&& (certificate.HasKeyUsage(KeyUsage::EncipherOnly) || certificate.HasKeyUsage(KeyUsage::DecipherOnly)))
+			return fail(TLSPeerError::MalformedExtension, index);
+		if (certificate.m_has_key_usage && certificate.HasKeyUsage(KeyUsage::KeyCertSign) && !certificate.IsCA())
+			return fail(TLSPeerError::MalformedExtension, index);
+		if (!IsPeerPublicKey(certificate.View(certificate.m_public_key))
+			|| (index != last && !IsPeerSignatureAlgorithm(certificate.View(certificate.m_signature_algorithm))))
+			return fail(TLSPeerError::UnsupportedAlgorithm, index);
+		if (index > 0 && !certificate_at(index - 1).IsIssuedBy(certificate))
+			return fail(TLSPeerError::SignatureOrIssuerMismatch, index - 1);
+	}
+	if (identity) {
+		const auto bytes = identity->Value().span();
+		const auto matched = identity->Type() == SubjectAltNameType::DNS
+			? leaf.VerifyDNSName(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()))
+			: leaf.VerifyIPAddress(bytes);
+		if (!matched)
+			return StormByte::Unexpected(TLSPeerFailure(*matched.error()));
+	}
+	return {};
 }

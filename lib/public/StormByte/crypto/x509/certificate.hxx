@@ -537,6 +537,8 @@ namespace StormByte {
 						std::size_t length = 0;	///< Byte count.
 					};
 
+					friend class TLSPeerVerifier;	///< Additive peer composition shares immutable parser state.
+
 					Safe::Binary m_der;						///< Original DER encoding.
 					Range m_tbs;							///< Full TBSCertificate element.
 					Range m_signature_algorithm;			///< Full outer AlgorithmIdentifier element.

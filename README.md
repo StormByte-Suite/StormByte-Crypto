@@ -605,6 +605,31 @@ authenticating a peer. Fixture regeneration uses
 is only a generator tool, never a library or test-runtime dependency, and no
 private key is written to the repository.
 
+An additive **offline, constrained** composition is available through
+`<StormByte/crypto/x509/tls_peer.hxx>`:
+
+```cpp
+X509::SubjectAltName expected(X509::SubjectAltNameType::DNS,
+	Safe::Binary("www.example.com"));
+auto peer = X509::TLSPeerVerifier::Verify(*leaf, intermediates, *anchor,
+	explicitCallerTime, X509::TLSRole::Server, &expected);
+```
+
+This checks the exact caller-ordered path to the explicitly selected anchor,
+inclusive time, issuer CA/pathLen/keyCertSign, leaf digitalSignature, chainwide
+role-specific EKU and SAN identity. Server identity is mandatory; omitting a
+Client identity makes **no client-identity or application-authorization claim**.
+Anchor certificate restrictions are deliberate local policy; its self-signature
+is not verified. Unsupported path restrictions and unprocessed critical
+extensions fail explicitly; benign noncritical hints are not blanket-rejected.
+Detailed Safe-owned results retain purpose/identity errors and certificate index.
+Existing `VerifyChain` and license behavior is unchanged.
+
+This is **not full RFC 5280 or public HTTPS-ready authentication**: no
+handshake/key-possession proof, revocation (a revoked certificate may pass),
+path builder, system trust or networking. See the
+[supported subset, anchor policy, error map and limitations](doc/tls-peer-verification.md).
+
 ## Security notes
 
 - **Decompression of untrusted input is not size-bounded.** Like the underlying zlib/libbzip2, `Compressor` decompresses as much as the stream decodes to; a small malicious input can expand to a very large output ("decompression bomb"). If you decompress data from an untrusted source, bound it yourself: check the expected/maximum size before decompressing, or stop draining the streaming `Consumer` once your own limit is hit.
