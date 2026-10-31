@@ -54,6 +54,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
   - [Password and Vault](#password-and-vault)
   - [Hash and compress](#hash-and-compress)
   - [HMAC](#hmac)
+  - [Raw-key AEAD](#raw-key-aead)
   - [Symmetric encrypt](#symmetric-encrypt)
   - [Asymmetric encrypt](#asymmetric-encrypt)
   - [KeyPair on disk](#keypair-on-disk)
@@ -259,6 +260,56 @@ if (tag) {
 ```
 
 Both operations return `StormByte::Expected` with `HMAC::Error` on failure. Empty keys and messages are valid HMAC inputs; longer-than-block-size keys are normalized by HMAC. The API does not expose key bytes or Crypto++ types.
+
+### Raw-key AEAD
+
+`<StormByte/crypto/aead.hxx>` provides `AEAD::Seal(algorithm, key, nonce,
+plaintext, aad = {})` and `AEAD::Open(algorithm, key, nonce, ciphertext, tag,
+aad = {})`. Algorithms are `AEAD::Algorithm::AES128GCM` (exactly 16 raw key
+bytes) and `AES256GCM` (exactly 32). Keys use `Secure::Password`; all other
+inputs are synchronous borrowed `std::span<const std::byte>` values supporting
+binary NULs. Empty plaintext/ciphertext and AAD are valid.
+
+```cpp
+#include <StormByte/crypto/aead.hxx>
+
+using namespace StormByte::Crypto;
+Secure::Password key(keyBytes.data(), StormByte::ByteSize{keyBytes.size()});
+auto sealed = AEAD::Seal(AEAD::Algorithm::AES128GCM, key, nonceBytes, messageBytes, aadBytes);
+if (sealed) {
+	auto plaintext = AEAD::Open(AEAD::Algorithm::AES128GCM, key, nonceBytes,
+		sealed->ciphertext.span(), sealed->tag.span(), aadBytes);
+	// plaintext contains independently owned wiped Safe::SecureBinary only on success.
+}
+```
+
+Nonces must be exactly **12 bytes** and tags exactly **16 bytes**; shortened
+tags are never accepted. **Never reuse a nonce with the same key**, including
+across processes or restarts. The caller manages nonces and per-key usage limits.
+GCM permits at most `2^36 - 32` message bytes and `2^61 - 1` AAD bytes per call
+(also subject to address space/allocation limits). `Seal` returns
+`Expected<AEAD::Sealed, AEAD::Error>` containing detached public `Safe::Binary`
+ciphertext of exactly plaintext length and a full tag. `Open` returns
+`Expected<Safe::SecureBinary, AEAD::Error>`: it authenticates the entire ciphertext
+before releasing any plaintext, wiping all tentative plaintext on failure.
+Same-length wrong keys/nonces/tags/AAD or modified ciphertext yield
+`AuthenticationFailed`; invalid algorithms, sizes and over-limit inputs have
+distinct typed errors. Crypto++ exceptions become `BackendFailure`; allocation
+and non-backend exceptions propagate, as with HKDF. No mutable shared secret
+buffer or backend object is exposed. Plaintext copies own independent wiped
+storage (with best-effort page locking); keys share immutable wiped storage.
+All returned byte allocations remain Base-owned. Borrowed plaintext views and
+copies/moves into plain `Binary` are the caller's responsibility: keep secrets
+in `SecureBinary` and do not retain a view beyond its owner's lifetime.
+Use compatible ABIs and keep Crypto/Base loaded while values exist.
+
+This API reuses Crypto++'s detached one-shot GCM, private `PasswordAccess`, and
+existing secure ownership/wiping rather than duplicating a cipher engine.
+The password/stream `CipherOps` derives keys with PBKDF2, writes random
+salt/IV envelopes and drains into public buffers, so it is deliberately not
+forced into raw-key authenticated secret output. Existing crypters and their
+wire formats remain unchanged. This step does not provide ChaCha20-Poly1305,
+TLS records/sessions, sequence-number logic, nonce generation or streaming AEAD.
 
 ### Symmetric encrypt
 

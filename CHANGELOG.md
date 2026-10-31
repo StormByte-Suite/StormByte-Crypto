@@ -22,6 +22,7 @@ If you landed here from a release link and have not read the tree:
 
 ### Added
 
+- Raw-key one-shot AES-128-GCM and AES-256-GCM via `<StormByte/crypto/aead.hxx>`: explicit 12-byte nonce and binary AAD, detached `Safe::Binary` ciphertext and full 16-byte tag, typed validation/authentication/backend errors, and independently owned wiped `Safe::SecureBinary` plaintext returned only after complete authentication. No password derivation, envelope or nonce management; existing crypters are unchanged.
 - One-shot binary HMAC-SHA-256 and HMAC-SHA-384 via `<StormByte/crypto/hmac.hxx>`. Keys use wiped `Secure::Password` storage, results are full-length `Safe::Binary` tags, and verification compares tag bytes in constant time while rejecting truncated or oversized tags.
 - RFC 5869 HKDF-Extract and HKDF-Expand for SHA-256 and SHA-384 via `<StormByte/crypto/hkdf.hxx>`. Input key material, PRKs and derived keys use wiped `Secure::Password` storage; binary salt and info are accepted as borrowed spans. Empty salt follows RFC 5869's HashLen-zero-byte rule, empty IKM/info and zero-length output are valid, short PRKs and outputs over 255*HashLen return typed errors.
 
