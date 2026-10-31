@@ -111,10 +111,10 @@ ExpectedTrustPath StormByte::Crypto::X509::ValidateBundledTLSPath(const Certific
 	if (!roots)
 		return StormByte::Unexpected(*roots.error());
 #ifdef WINDOWS
-	if (!Detail::NativeTrustPath(leaf, intermediates, roots->span(), at, true))
+	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at, true))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #elifdef MACOS
-	if (!Detail::NativeTrustPath(leaf, intermediates, roots->span(), at, true))
+	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at, true))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #else
 	const auto& last = intermediates.empty() ? leaf : intermediates.back();
