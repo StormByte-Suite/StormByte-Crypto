@@ -19,6 +19,9 @@ If you landed here from a release link and have not read the tree:
 - License: GNU Lesser General Public License version 3 or later, [LICENSE](https://github.com/StormByte-Suite/StormByte-Crypto/blob/master/LICENSE)
 
 ## [Unreleased]
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.0...HEAD
+
+## [2.3.0] - 2026-10-31
 
 ### Added
 
@@ -36,7 +39,7 @@ If you landed here from a release link and have not read the tree:
 - Restore the complete standard license banner in the HKDF header, implementation and unit tests.
 - Propagate upstream consumer errors in streaming encryption, decryption and hashing instead of treating them as clean EOF and finalizing successfully. Add regression coverage for all six symmetric ciphers, RSA/ECC Native and Hybrid streams, and all six hash algorithms in Copy/Move modes, including initial and delayed errors and clean controls.
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...HEAD
+[2.3.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...2.3.0
 
 ## [2.2.1] - 2026-10-28
 
