@@ -17,6 +17,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 - **Hasher** — SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b, BLAKE2s. One-shot hex digest or a `Buffer::Consumer` that yields the digest when the source closes.
 - **HMAC** — One-shot HMAC-SHA-256 and HMAC-SHA-384 with binary full-length tags, wiped `Secure::Password` keys, typed errors and constant-time tag verification.
+- **TLS policy groundwork** — Configurable designated TLS 1.3 profile and immutable validated preferences for a future Network consumer. **Not an available TLS implementation or connection-ready configuration.**
 - **Random** — Cryptographically secure bytes as `Safe::SecureBinary` and unbiased printable ASCII text as `Safe::String`, using the existing per-thread generator.
 - **Compressor** — Zlib, Gzip, BZip2. Same block / stream contract as the rest of the module.
 - **Symmetric crypter** — AES CBC, AES-GCM, ChaCha20-Poly1305, Camellia, Serpent, Twofish. Keys from `Secure::Password` via PBKDF2-HMAC-SHA256 (600 000 iterations). Authenticated modes fail closed on a bad tag or a wrong password.
@@ -55,6 +56,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
   - [Hash and compress](#hash-and-compress)
   - [HMAC](#hmac)
   - [Raw-key AEAD](#raw-key-aead)
+  - [TLS policy groundwork](#tls-policy-groundwork)
   - [Symmetric encrypt](#symmetric-encrypt)
   - [Asymmetric encrypt](#asymmetric-encrypt)
   - [KeyPair on disk](#keypair-on-disk)
@@ -310,6 +312,79 @@ salt/IV envelopes and drains into public buffers, so it is deliberately not
 forced into raw-key authenticated secret output. Existing crypters and their
 wire formats remain unchanged. This step does not provide ChaCha20-Poly1305,
 TLS records/sessions, sequence-number logic, nonce generation or streaming AEAD.
+
+### TLS policy groundwork
+
+`<StormByte/crypto/tls/policy.hxx>` defines registered identifiers for a bounded
+**planned** TLS 1.3 profile. This API is **not usable TLS**: there is no session,
+handshake, record engine or negotiation. `TLS::Validate` checks configuration
+only; its success never means that a connection can be established.
+`TLS::InitialProfile()` reports designated policy vocabulary, not runtime TLS
+availability. Network may eventually retain a policy, but this change adds no
+Network integration, sockets, threads or callbacks.
+
+Defaults contain the complete initial profile in the following preference order:
+
+| Independent list | Default entries (preferred first) | Registered IDs |
+| --- | --- | --- |
+| Version | `Version::TLS13` only | `0x0304` (supported_versions, not record legacy version) |
+| Cipher suites | `CipherSuite::TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384` | `0x1301`, `0x1302` |
+| Groups | `Group::X25519`, `Secp256r1` (P-256) | `0x001d`, `0x0017` |
+| Signature schemes | `SignatureScheme::ECDSA_SECP256R1_SHA256` | `0x0403` |
+
+`TLS::DescribeCipherSuite` returns the **fixed**, inseparable mapping to
+`AEAD::Algorithm::AES128GCM` + `HKDF::Algorithm::SHA256`, or `AES256GCM` +
+`SHA384`. Configuration accepts suite identifiers, not arbitrary cipher/hash
+pairs. SHA-256/SHA-384 designate the transcript and HKDF hash; existing HMAC,
+HKDF and raw-key AEAD supply primitives, not the TLS key schedule or records.
+Group vocabulary is justified by existing X25519 and secp256r1 ECDH keypair/key
+agreement primitives. Existing P-256 ECDSA/SHA-256 supplies the signature
+primitive, **not** a TLS CertificateVerify implementation: signer output and
+key material need TLS wire-format adaptation, including DER ECDSA signatures.
+RSA-PSS is deliberately excluded: the current RSA signer uses PKCS#1 v1.5,
+not TLS 1.3 RSA-PSS. No other suite, group, signature or legacy version is allowed.
+
+```cpp
+#include <StormByte/crypto/tls/policy.hxx>
+
+using namespace StormByte::Crypto;
+TLS::Configuration configuration;
+configuration.cipher_suites = {TLS::CipherSuite::TLS_AES_256_GCM_SHA384};
+configuration.groups = {TLS::Group::Secp256r1, TLS::Group::X25519};
+auto policy = TLS::Validate(configuration);
+if (policy) {
+	const auto& allowed = policy->Preferences();
+	// Retain the policy for future use; allowed preserves exactly these lists.
+	// This does not start, negotiate or enable a TLS connection.
+}
+```
+
+`Validate` rejects `UnsupportedVersion`; `EmptyCipherSuites`,
+`UnsupportedCipherSuite`, `DuplicateCipherSuite`; `EmptyGroups`,
+`UnsupportedGroup`, `DuplicateGroup`; and `EmptySignatureSchemes`,
+`UnsupportedSignatureScheme`, `DuplicateSignatureScheme`. Undesignated
+registered values and unknown casts both yield the relevant unsupported error.
+Validation checks version, suites, groups, signatures in that order, then
+each list left to right. Allowed nonempty subsets and reordering are preserved
+exactly: no sorting, arbitrary algorithm mixing, inserted fallback or selection.
+
+`TLS::Policy{}` retains the default profile. Successful validation copies the
+mutable input's `Safe::Vector` lists into a const `Configuration` owned through
+`Safe::Shared` on Base's heap. Caller edits and destruction cannot change it.
+Policy copies **and moves** share immutable ownership and preserve the source;
+assignment replaces an entire snapshot. Mutable Configuration copies are
+independent; its moves leave source lists empty. `Preferences()` is read-only:
+borrowed references must not outlive their snapshot. Safe Optional/Vector can
+retain policies. Keep compatible Crypto/Base providers loaded while these
+values exist. Base allocation errors propagate; no native backend type escapes.
+
+Before a session can be implemented, the next X509 step must add explicit
+TLS peer identity and certificate-purpose validation (SAN/hostname checks,
+server/client EKU and role-specific key usage with caller-selected trust/time),
+with positive and negative tests. Existing certificate parsing/chain verification
+does not by itself authenticate a TLS peer. TLS key-share wire encodings,
+CertificateVerify/Finished, transcript/key schedule, record sequence/nonce and
+usage limits, and real negotiation restricted to policy lists also remain pending.
 
 ### Symmetric encrypt
 
