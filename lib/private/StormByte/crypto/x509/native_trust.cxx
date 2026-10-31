@@ -312,7 +312,8 @@ namespace {
 		Owner<CFArrayRef> chain(SecTrustCopyCertificateChain(trust.get()), Release);
 		if (!chain || CFArrayGetCount(chain.get()) == 0)
 			return Owner<CFDataRef>(nullptr, Release);
-		auto root = static_cast<SecCertificateRef>(CFArrayGetValueAtIndex(chain.get(), CFArrayGetCount(chain.get()) - 1));
+		auto root = static_cast<SecCertificateRef>(const_cast<void*>(
+			CFArrayGetValueAtIndex(chain.get(), CFArrayGetCount(chain.get()) - 1)));
 		return Owner<CFDataRef>(SecCertificateCopyData(root), Release);
 	}
 
