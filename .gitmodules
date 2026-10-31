@@ -7,3 +7,9 @@
 [submodule "Crypto++"]
 	path = thirdparty/Crypto++/cmake-port/src
 	url = https://github.com/weidai11/cryptopp.git
+[submodule "OpenSSL-CMake"]
+	path = thirdparty/OpenSSL/cmake
+	url = https://github.com/jimmy-park/openssl-cmake.git
+[submodule "OpenSSL"]
+	path = thirdparty/OpenSSL/src
+	url = https://github.com/openssl/openssl.git

@@ -9,7 +9,7 @@
 
 This repository is **StormByte Crypto**: hash, compress, encrypt, sign and key agreement for the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Public headers live under `StormByte/crypto/`. Crypto++ stays in the private tree: installed headers never mention `CryptoPP::`. With a static Crypto++ link, consumers do not install it.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Public headers live under `StormByte/crypto/`. Crypto++ and OpenSSL are private implementation dependencies: installed headers expose neither library's types. Bundled builds link both statically; consumers do not install either dependency.
 
 The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedia, Network and System are **other repositories**. This one does not implement them.
 
@@ -17,7 +17,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 - **Hasher** — SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b, BLAKE2s. One-shot hex digest or a `Buffer::Consumer` that yields the digest when the source closes.
 - **HMAC** — One-shot HMAC-SHA-256 and HMAC-SHA-384 with binary full-length tags, wiped `Secure::Password` keys, typed errors and constant-time tag verification.
-- **TLS policy groundwork** — Configurable designated TLS 1.3 profile and immutable validated preferences for a future Network consumer. **Not an available TLS implementation or connection-ready configuration.**
+- **TLS** — TLS 1.3 client/server sessions backed by pinned, statically linked OpenSSL 3.5.9. Sessions exchange ciphertext and plaintext through bounded caller-owned buffers; Crypto does no socket, DNS, HTTP or filesystem I/O.
 - **Random** — Cryptographically secure bytes as `Safe::SecureBinary` and unbiased printable ASCII text as `Safe::String`, using the existing per-thread generator.
 - **Compressor** — Zlib, Gzip, BZip2. Same block / stream contract as the rest of the module.
 - **Symmetric crypter** — AES CBC, AES-GCM, ChaCha20-Poly1305, Camellia, Serpent, Twofish. Keys from `Secure::Password` via PBKDF2-HMAC-SHA256 (600 000 iterations). Authenticated modes fail closed on a bad tag or a wrong password.
@@ -56,7 +56,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
   - [Hash and compress](#hash-and-compress)
   - [HMAC](#hmac)
   - [Raw-key AEAD](#raw-key-aead)
-  - [TLS policy groundwork](#tls-policy-groundwork)
+  - [TLS sessions](#tls-sessions)
   - [Symmetric encrypt](#symmetric-encrypt)
   - [Asymmetric encrypt](#asymmetric-encrypt)
   - [KeyPair on disk](#keypair-on-disk)
@@ -70,7 +70,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 ## Installation
 
-Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.3, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Configure downloads those release archives. There is no StormByte source submodule. Crypto++ and libbzip2 are build dependencies. Prefer a **static** Crypto++ link when you redistribute. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
+Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.3, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL 3.5.9 (pinned with its CMake port) and libbzip2 are build dependencies. OpenSSL is compiled statically into Crypto and is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
 
 ```sh
 git clone --recursive https://github.com/StormByte-Suite/StormByte-Crypto.git
@@ -313,24 +313,26 @@ forced into raw-key authenticated secret output. Existing crypters and their
 wire formats remain unchanged. This step does not provide ChaCha20-Poly1305,
 TLS records/sessions, sequence-number logic, nonce generation or streaming AEAD.
 
-### TLS policy groundwork
+### TLS sessions
 
-`<StormByte/crypto/tls/policy.hxx>` defines registered identifiers for a bounded
-**planned** TLS 1.3 profile. This API is **not usable TLS**: there is no session,
-handshake, record engine or negotiation. `TLS::Validate` checks configuration
-only; its success never means that a connection can be established.
-`TLS::InitialProfile()` reports designated policy vocabulary, not runtime TLS
-availability. Network may eventually retain a policy, but this change adds no
-Network integration, sockets, threads or callbacks.
+`<StormByte/crypto/tls/session.hxx>` provides an OpenSSL-backed TLS 1.3
+client/server session. OpenSSL 3.5.9 is pinned and linked statically; its types
+and symbols are hidden from the shared Crypto library's exported interface.
+`Session` is deliberately transport-independent: it performs no socket, DNS,
+HTTP, filesystem, system-clock or trust-store I/O. The consumer owns transport
+scheduling, deadlines and retries, and feeds/drains bytes through caller-owned
+buffers. Serialize calls on each session; a session is not thread-safe.
 
-Defaults contain the complete initial profile in the following preference order:
+The API supports TLS 1.3 only, with validated cipher-suite, group and signature
+scheme lists. Defaults contain the complete supported profile in preference
+order:
 
 | Independent list | Default entries (preferred first) | Registered IDs |
 | --- | --- | --- |
 | Version | `Version::TLS13` only | `0x0304` (supported_versions, not record legacy version) |
 | Cipher suites | `CipherSuite::TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384` | `0x1301`, `0x1302` |
 | Groups | `Group::X25519`, `Secp256r1` (P-256) | `0x001d`, `0x0017` |
-| Signature schemes | `SignatureScheme::ECDSA_SECP256R1_SHA256` | `0x0403` |
+| Signature schemes | `SignatureScheme::ECDSA_SECP256R1_SHA256`, `RSA_PSS_RSAE_SHA256` | `0x0403`, `0x0804` |
 
 `TLS::DescribeCipherSuite` returns the **fixed**, inseparable mapping to
 `AEAD::Algorithm::AES128GCM` + `HKDF::Algorithm::SHA256`, or `AES256GCM` +
@@ -338,11 +340,11 @@ Defaults contain the complete initial profile in the following preference order:
 pairs. SHA-256/SHA-384 designate the transcript and HKDF hash; existing HMAC,
 HKDF and raw-key AEAD supply primitives, not the TLS key schedule or records.
 Group vocabulary is justified by existing X25519 and secp256r1 ECDH keypair/key
-agreement primitives. Existing P-256 ECDSA/SHA-256 supplies the signature
-primitive, **not** a TLS CertificateVerify implementation: signer output and
-key material need TLS wire-format adaptation, including DER ECDSA signatures.
-RSA-PSS is deliberately excluded: the current RSA signer uses PKCS#1 v1.5,
-not TLS 1.3 RSA-PSS. No other suite, group, signature or legacy version is allowed.
+agreement primitives. OpenSSL implements the TLS key schedule, handshake,
+CertificateVerify and record protection; the existing standalone `Signer` API
+is not used for TLS wire formatting. RSA-PSS/SHA-256 is available for TLS
+CertificateVerify, distinct from the existing RSA PKCS#1 v1.5 signing API.
+No other suite, group, signature or legacy protocol version is allowed.
 
 ```cpp
 #include <StormByte/crypto/tls/policy.hxx>
@@ -354,10 +356,53 @@ configuration.groups = {TLS::Group::Secp256r1, TLS::Group::X25519};
 auto policy = TLS::Validate(configuration);
 if (policy) {
 	const auto& allowed = policy->Preferences();
-	// Retain the policy for future use; allowed preserves exactly these lists.
-	// This does not start, negotiate or enable a TLS connection.
+	// The session engine consumes this TLS 1.3 policy.
 }
 ```
+
+`TLS::ClientConfiguration` requires an expected DNS or binary IP SAN identity.
+Its `TrustSource` is either the versioned bundled-root set or explicit custom
+anchors; these sources are never silently merged. `TLS::ServerConfiguration`
+accepts a PEM leaf/intermediate chain and matching private key, and can require
+a client certificate against explicit CA anchors. Optional ALPN lists use the
+standard length-prefixed wire format. `NegotiatedALPN()` reports the selected
+protocol after a successful handshake.
+
+Create a client session, then drive it with the transport's buffers:
+
+```cpp
+#include <StormByte/crypto/tls/session.hxx>
+
+using namespace StormByte::Crypto;
+TLS::ClientConfiguration options;
+options.identity = X509::SubjectAltName(X509::SubjectAltNameType::DNS,
+	Safe::Binary("service.example"));
+auto session = TLS::Session::CreateClient(options);
+// DrainEncrypted() sends pending handshake bytes; FeedEncrypted() supplies
+// received bytes; ReadPlaintext() and WritePlaintext() exchange application data.
+```
+
+Feed and write operations may consume partial input; zero indicates backpressure
+or no current progress. Drain output promptly. Input chunks are capped at 64 KiB,
+pending ciphertext at 1 MiB, certificate chains at 18 certificates/256 KiB DER,
+and plaintext is processed in records no larger than 16 KiB. Fatal protocol and
+peer-validation failures are sticky; pending TLS alert bytes can still be
+drained after failure. `Shutdown()` exchanges TLS `close_notify`; the transport
+must continue driving the session until both sides close or an external deadline
+expires.
+
+Server certificate chain validation combines OpenSSL's path construction with
+Crypto's configured trust and TLS peer policy. Expected server identity is
+checked against SAN only, with no CN fallback. Revocation is opt-in: when
+`require_revocation` is enabled, the caller must supply one fresh, verified CRL
+or OCSP response per non-anchor certificate in leaf-to-issuer order before the
+handshake. Crypto does not fetch revocation data; the transport/application
+must provide it. Missing or invalid required evidence rejects the peer. The
+mTLS client-certificate path currently has no revocation-evidence option.
+
+These are stream-engine tests over two in-memory TLS endpoints, not sockets or
+an external service. Network integration remains the responsibility of the
+consumer.
 
 `Validate` rejects `UnsupportedVersion`; `EmptyCipherSuites`,
 `UnsupportedCipherSuite`, `DuplicateCipherSuite`; `EmptyGroups`,
@@ -378,14 +423,11 @@ borrowed references must not outlive their snapshot. Safe Optional/Vector can
 retain policies. Keep compatible Crypto/Base providers loaded while these
 values exist. Base allocation errors propagate; no native backend type escapes.
 
-Certificate SAN DNS/IP identity comparison and TLS 1.3 certificate-purpose checks
-now exist (see Certificate chains), but neither authenticates a peer. The next
-trust/chain step must compose caller-selected anchors and validation time with
-chain verification, expected identity and purpose checks, defining the supported
-trust profile and its limitations explicitly. Existing certificate parsing/chain verification
-does not by itself authenticate a TLS peer. TLS key-share wire encodings,
-CertificateVerify/Finished, transcript/key schedule, record sequence/nonce and
-usage limits, and real negotiation restricted to policy lists also remain pending.
+`X509::TLSPeerVerifier` and `X509::VerifyPaymentPeer` remain independently useful
+offline path/evidence APIs; neither performs TLS key-possession proof or network
+fetching. `TLS::Session` composes the configured TLS handshake with trust,
+identity and certificate-purpose checks without changing the existing
+certificate parser or `VerifyChain` behavior.
 
 ### Symmetric encrypt
 
@@ -598,12 +640,14 @@ propagate as `Safe::AllocationError`. Purpose results do **not** prove trust,
 validity, chain-wide EKU restrictions, critical-extension processing, end-entity
 classification, name identity, signature/key suitability or TLS authentication;
 CA flags are deliberately not consulted. Public RSA and EC keys can be loaded,
-but this does not add TLS RSA-PSS or CertificateVerify support. Applications must
-separately compose trust/chain/time, identity, usage and algorithm policy before
+but this purpose/path API does not itself implement TLS RSA-PSS or
+CertificateVerify. `TLS::Session` provides those through its separate OpenSSL
+handshake engine. Applications using the standalone verifier must still
+compose trust/chain/time, identity, usage and algorithm policy before
 authenticating a peer. Fixture regeneration uses
-`python3 test/x509/generate_purpose_fixtures.py` from the repository root; OpenSSL
-is only a generator tool, never a library or test-runtime dependency, and no
-private key is written to the repository.
+`python3 test/x509/generate_purpose_fixtures.py` from the repository root; that
+generator uses OpenSSL but writes no private keys to the repository. The TLS
+session tests also link the bundled OpenSSL library.
 
 An additive **offline, constrained** composition is available through
 `<StormByte/crypto/x509/tls_peer.hxx>`:

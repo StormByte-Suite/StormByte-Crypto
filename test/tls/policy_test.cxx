@@ -137,13 +137,14 @@ int test_protocol_ids_and_defaults() {
 	ASSERT_EQUAL(std::uint16_t{0x001d}, static_cast<std::uint16_t>(Group::X25519));
 	ASSERT_EQUAL(std::uint16_t{0x0017}, static_cast<std::uint16_t>(Group::Secp256r1));
 	ASSERT_EQUAL(std::uint16_t{0x0403}, static_cast<std::uint16_t>(SignatureScheme::ECDSA_SECP256R1_SHA256));
+	ASSERT_EQUAL(std::uint16_t{0x0804}, static_cast<std::uint16_t>(SignatureScheme::RSA_PSS_RSAE_SHA256));
 	const auto profile = InitialProfile();
 	ASSERT_TRUE(profile.version == Version::TLS13);
 	ASSERT_TRUE(std::ranges::equal(profile.cipher_suites, std::array{
 		CipherSuite::TLS_AES_128_GCM_SHA256, CipherSuite::TLS_AES_256_GCM_SHA384}));
 	ASSERT_TRUE(std::ranges::equal(profile.groups, std::array{Group::X25519, Group::Secp256r1}));
 	ASSERT_TRUE(std::ranges::equal(profile.signature_schemes,
-		std::array{SignatureScheme::ECDSA_SECP256R1_SHA256}));
+		std::array{SignatureScheme::ECDSA_SECP256R1_SHA256, SignatureScheme::RSA_PSS_RSAE_SHA256}));
 	const auto result = Validate(Configuration{});
 	ASSERT_TRUE(result);
 	ASSERT_TRUE(Equal(profile, result->Preferences()));
@@ -197,7 +198,7 @@ int test_empty_duplicate_and_unknown_preferences() {
 		configuration.groups = {static_cast<Group>(id)};
 		ASSERT_TRUE(Rejected(configuration, Error::UnsupportedGroup));
 	}
-	for (const auto id : {0, 0x0401, 0x0804, 0xffff}) {
+	for (const auto id : {0, 0x0401, 0xffff}) {
 		configuration = {};
 		configuration.signature_schemes.push_back(static_cast<SignatureScheme>(id));
 		ASSERT_TRUE(Rejected(configuration, Error::UnsupportedSignatureScheme));
