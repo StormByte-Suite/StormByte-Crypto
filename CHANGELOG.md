@@ -20,6 +20,10 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+### Added
+
+- One-shot binary HMAC-SHA-256 and HMAC-SHA-384 via `<StormByte/crypto/hmac.hxx>`. Keys use wiped `Secure::Password` storage, results are full-length `Safe::Binary` tags, and verification compares tag bytes in constant time while rejecting truncated or oversized tags.
+
 ### Fixed
 
 - Propagate upstream consumer errors in streaming encryption, decryption and hashing instead of treating them as clean EOF and finalizing successfully. Add regression coverage for all six symmetric ciphers, RSA/ECC Native and Hybrid streams, and all six hash algorithms in Copy/Move modes, including initial and delayed errors and clean controls.

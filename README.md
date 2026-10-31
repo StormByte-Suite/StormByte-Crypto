@@ -16,6 +16,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 ## What this module does
 
 - **Hasher** — SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b, BLAKE2s. One-shot hex digest or a `Buffer::Consumer` that yields the digest when the source closes.
+- **HMAC** — One-shot HMAC-SHA-256 and HMAC-SHA-384 with binary full-length tags, wiped `Secure::Password` keys, typed errors and constant-time tag verification.
 - **Random** — Cryptographically secure bytes as `Safe::SecureBinary` and unbiased printable ASCII text as `Safe::String`, using the existing per-thread generator.
 - **Compressor** — Zlib, Gzip, BZip2. Same block / stream contract as the rest of the module.
 - **Symmetric crypter** — AES CBC, AES-GCM, ChaCha20-Poly1305, Camellia, Serpent, Twofish. Keys from `Secure::Password` via PBKDF2-HMAC-SHA256 (600 000 iterations). Authenticated modes fail closed on a bad tag or a wrong password.
@@ -52,6 +53,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
   - [Random bytes and text](#random-bytes-and-text)
   - [Password and Vault](#password-and-vault)
   - [Hash and compress](#hash-and-compress)
+  - [HMAC](#hmac)
   - [Symmetric encrypt](#symmetric-encrypt)
   - [Asymmetric encrypt](#asymmetric-encrypt)
   - [KeyPair on disk](#keypair-on-disk)
@@ -237,6 +239,26 @@ prod.Write(message);
 prod.Close();
 auto hashed = sha->Hash(prod.Consumer());
 ```
+
+### HMAC
+
+HMAC accepts binary message bytes and a key held by `Secure::Password`. `Compute` returns a full-length binary tag (32 bytes for SHA-256, 48 for SHA-384); `Verify` rejects any other tag length and returns `false` for a full-length mismatch.
+
+```cpp
+#include <StormByte/crypto/hmac.hxx>
+#include <StormByte/crypto/secure/password.hxx>
+
+using namespace StormByte::Crypto;
+using StormByte::Crypto::Secure::Password;
+
+Password key(secretBytes.data(), StormByte::ByteSize{secretBytes.size()});
+auto tag = HMAC::Compute(HMAC::Algorithm::SHA256, key, messageBytes);
+if (tag) {
+	auto verified = HMAC::Verify(HMAC::Algorithm::SHA256, key, messageBytes, *tag);
+}
+```
+
+Both operations return `StormByte::Expected` with `HMAC::Error` on failure. Empty keys and messages are valid HMAC inputs; longer-than-block-size keys are normalized by HMAC. The API does not expose key bytes or Crypto++ types.
 
 ### Symmetric encrypt
 
