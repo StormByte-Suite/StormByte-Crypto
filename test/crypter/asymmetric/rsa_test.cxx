@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/crypter/asymmetric/rsa.hxx>
@@ -254,6 +255,15 @@ int test_rsa_hybrid_decrypt_with_mismatched_key(KeyPair::Generic::PointerType kp
 	RETURN_TEST(0);
 }
 
+int test_rsa_stream_error_propagation(KeyPair::Generic::PointerType kp) {
+	Crypter::RSA rsa(kp);
+	return Test::StreamError::CheckAsymmetric(rsa,
+		[&](StormByte::Buffer::Consumer input, Crypter::Asymmetric::Strategy strategy,
+			StormByte::Crypto::ReadMode mode) {
+			return rsa.Encrypt(input, strategy, mode);
+		});
+}
+
 int main() {
 	auto kp = KeyPair::RSA::Generate(2048);
 	if (!kp) {
@@ -287,6 +297,7 @@ int main() {
 	result += test_rsa_corrupted_hybrid_envelope_fails(kp);
 	result += test_rsa_corrupted_native_fails_auto_detect(kp);
 	result += test_rsa_hybrid_decrypt_with_mismatched_key(kp);
+	result += test_rsa_stream_error_propagation(kp);
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

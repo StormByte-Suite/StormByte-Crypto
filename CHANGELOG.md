@@ -38,6 +38,10 @@ If you landed here from a release link and have not read the tree:
 - RFC 5869 HKDF-Extract and HKDF-Expand for SHA-256 and SHA-384 via `<StormByte/crypto/hkdf.hxx>`. Input key material, PRKs and derived keys use wiped `Secure::Password` storage; binary salt and info are accepted as borrowed spans. Empty salt follows RFC 5869's HashLen-zero-byte rule, empty IKM/info and zero-length output are valid, short PRKs and outputs over 255*HashLen return typed errors.
 - Add `WITH_OPENSSL=BUNDLED|SYSTEM` backend selection. Bundled mode is the default and uses the pinned static backend; System mode requires OpenSSL 3.0+ and links its shared libraries. Windows forces Bundled, and CI/release configure it explicitly.
 
+### Changed
+
+- Reorganize existing stream-error regression tests into the relevant SHA, symmetric-cipher, RSA and ECC test executables, removing the standalone `StreamErrorTests` target.
+
 ### Fixed
 
 - Restore the complete standard license banner in the HKDF header, implementation and unit tests.

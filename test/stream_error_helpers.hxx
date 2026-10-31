@@ -38,32 +38,20 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
+#pragma once
+
 #include "helpers.hxx"
 
 #include <StormByte/buffer/producer.hxx>
-#include <StormByte/crypto/crypter/asymmetric/ecc.hxx>
-#include <StormByte/crypto/crypter/asymmetric/rsa.hxx>
-#include <StormByte/crypto/crypter/symmetric/aes.hxx>
-#include <StormByte/crypto/crypter/symmetric/aes_gcm.hxx>
-#include <StormByte/crypto/crypter/symmetric/camellia.hxx>
-#include <StormByte/crypto/crypter/symmetric/chachapoly.hxx>
-#include <StormByte/crypto/crypter/symmetric/serpent.hxx>
-#include <StormByte/crypto/crypter/symmetric/twofish.hxx>
-#include <StormByte/crypto/hasher/blake2b.hxx>
-#include <StormByte/crypto/hasher/blake2s.hxx>
-#include <StormByte/crypto/hasher/sha256.hxx>
-#include <StormByte/crypto/hasher/sha512.hxx>
-#include <StormByte/crypto/hasher/sha3_256.hxx>
-#include <StormByte/crypto/hasher/sha3_512.hxx>
+#include <StormByte/crypto/crypter/asymmetric/generic.hxx>
 #include <StormByte/test_handlers.h>
 
+#include <algorithm>
 #include <chrono>
 #include <string>
+#include <thread>
 
-using namespace StormByte;
-using namespace StormByte::Crypto;
-
-namespace {
+namespace StormByte::Crypto::Test::StreamError {
 	enum class Scenario {
 		InitialError, BufferedError, DelayedError, CleanEmpty, CleanData
 	};
@@ -84,7 +72,7 @@ namespace {
 		return true;
 	}
 
-	bool Drain(Buffer::Consumer output, Safe::Binary& bytes) {
+	inline bool Drain(Buffer::Consumer output, Safe::Binary& bytes) {
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
 		while (!output.EoF()) {
 			if (output.HasError())
@@ -106,8 +94,8 @@ namespace {
 	int CheckStream(Transform transform, Verify verify, const Safe::Binary& data,
 		ReadMode mode, Scenario scenario, bool digest) {
 		Buffer::Producer input;
-		const bool hasData = scenario != Scenario::InitialError;
-		if (hasData)
+		const bool has_data = scenario != Scenario::InitialError;
+		if (has_data)
 			ASSERT_TRUE(input.Write(data.span()));
 		if (scenario == Scenario::InitialError || scenario == Scenario::BufferedError)
 			input.SetError();
@@ -117,8 +105,6 @@ namespace {
 		auto observer = input.Consumer();
 		auto output = transform(input.Consumer(), mode);
 		if (scenario == Scenario::DelayedError) {
-			// Consumers share the Ring's cursor in Copy mode, and storage in Move mode.
-			// Keep the source open until the adapter has read all supplied bytes.
 			const bool consumed = WaitFor([&] { return observer.Available() == ByteSize{0}; });
 			input.SetError();
 			ASSERT_TRUE(consumed);
@@ -126,8 +112,8 @@ namespace {
 
 		Safe::Binary bytes;
 		ASSERT_TRUE(Drain(output, bytes));
-		const bool error = scenario == Scenario::InitialError ||
-			scenario == Scenario::BufferedError || scenario == Scenario::DelayedError;
+		const bool error = scenario == Scenario::InitialError
+			|| scenario == Scenario::BufferedError || scenario == Scenario::DelayedError;
 		ASSERT_EQUAL(output.HasError(), error);
 		ASSERT_FALSE(output.IsWritable());
 		if (error) {
@@ -135,26 +121,25 @@ namespace {
 				ASSERT_TRUE(bytes.empty());
 				ASSERT_EQUAL(output.Available(), ByteSize{0});
 			}
-		}
-		else {
+		} else {
 			ASSERT_TRUE(verify(bytes));
 		}
 		RETURN_TEST(0);
 	}
 
 	template<typename HasherType>
-	int CheckHasher(const char* name) {
+	int CheckHasher() {
 		HasherType hasher;
 		int result = 0;
 		for (const auto mode : { ReadMode::Copy, ReadMode::Move }) {
 			for (const auto scenario : Scenarios) {
-				std::cout << name << " mode=" << static_cast<int>(mode)
-					<< " scenario=" << static_cast<int>(scenario) << '\n';
 				const Safe::Binary data(scenario == Scenario::CleanEmpty ? "" : std::string(8192, 'h'));
 				Buffer::FIFO expected;
 				ASSERT_TRUE(hasher.Hash(data.span(), expected));
 				result += CheckStream(
-					[&](Buffer::Consumer input, ReadMode readMode) { return hasher.Hash(input, readMode); },
+					[&](Buffer::Consumer input, ReadMode read_mode) {
+						return hasher.Hash(input, read_mode);
+					},
 					[&](const Safe::Binary& bytes) { return bytes == expected.Data(); },
 					data, mode, scenario, true);
 			}
@@ -163,7 +148,7 @@ namespace {
 	}
 
 	template<typename Cipher, typename Encrypt>
-	int CheckCipher(const char* name, Cipher& cipher, Encrypt encrypt, std::size_t size) {
+	int CheckCipher(Cipher& cipher, Encrypt encrypt, std::size_t size) {
 		int result = 0;
 		for (const auto mode : { ReadMode::Copy, ReadMode::Move }) {
 			for (const auto scenario : Scenarios) {
@@ -177,12 +162,9 @@ namespace {
 				ASSERT_FALSE(encrypted.HasError());
 
 				for (const bool decrypt : { false, true }) {
-					std::cout << name << (decrypt ? " decrypt" : " encrypt")
-						<< " mode=" << static_cast<int>(mode)
-						<< " scenario=" << static_cast<int>(scenario) << '\n';
 					result += CheckStream(
-						[&](Buffer::Consumer input, ReadMode readMode) {
-							return decrypt ? cipher.Decrypt(input, readMode) : encrypt(input, readMode);
+						[&](Buffer::Consumer input, ReadMode read_mode) {
+							return decrypt ? cipher.Decrypt(input, read_mode) : encrypt(input, read_mode);
 						},
 						[&](const Safe::Binary& bytes) {
 							if (decrypt)
@@ -193,7 +175,8 @@ namespace {
 							check.Close();
 							auto decrypted = cipher.Decrypt(check.Consumer(), mode);
 							Safe::Binary recovered;
-							return Drain(decrypted, recovered) && !decrypted.HasError() && recovered == plain;
+							return Drain(decrypted, recovered)
+								&& !decrypted.HasError() && recovered == plain;
 						},
 						decrypt ? ciphertext : plain, mode, scenario, false);
 				}
@@ -203,49 +186,24 @@ namespace {
 	}
 
 	template<typename Cipher>
-	int CheckSymmetric(const char* name) {
+	int CheckSymmetric() {
 		Cipher cipher(Secure::Password("StreamErrorPassword123!"));
-		return CheckCipher(name, cipher,
-			[&](Buffer::Consumer input, ReadMode mode) { return cipher.Encrypt(input, mode); }, 8192);
+		return CheckCipher(cipher, [&](Buffer::Consumer input, ReadMode mode) {
+			return cipher.Encrypt(input, mode);
+		}, 8192);
 	}
 
-	template<typename Cipher>
-	int CheckAsymmetric(const char* name, Cipher& cipher) {
+	template<typename Cipher, typename Encrypt>
+	int CheckAsymmetric(Cipher& cipher, Encrypt encrypt) {
 		int result = 0;
-		for (const auto strategy : { Crypter::Asymmetric::Strategy::Native, Crypter::Asymmetric::Strategy::Hybrid }) {
-			std::cout << name << " strategy=" << static_cast<int>(strategy) << '\n';
-			result += CheckCipher(name, cipher,
-				[&](Buffer::Consumer input, ReadMode mode) { return cipher.Encrypt(input, strategy, mode); }, 128);
+		for (const auto strategy : {
+				Crypter::Asymmetric::Strategy::Native,
+				Crypter::Asymmetric::Strategy::Hybrid}) {
+			result += CheckCipher(cipher,
+				[&](Buffer::Consumer input, ReadMode mode) {
+					return encrypt(input, strategy, mode);
+				}, 128);
 		}
 		return result;
 	}
-}
-
-int main() {
-	int result = 0;
-	result += CheckHasher<Hasher::Blake2b>("Blake2b");
-	result += CheckHasher<Hasher::Blake2s>("Blake2s");
-	result += CheckHasher<Hasher::SHA256>("SHA256");
-	result += CheckHasher<Hasher::SHA512>("SHA512");
-	result += CheckHasher<Hasher::SHA3_256>("SHA3_256");
-	result += CheckHasher<Hasher::SHA3_512>("SHA3_512");
-	result += CheckSymmetric<Crypter::AES>("AES");
-	result += CheckSymmetric<Crypter::AES_GCM>("AES_GCM");
-	result += CheckSymmetric<Crypter::Camellia>("Camellia");
-	result += CheckSymmetric<Crypter::ChaChaPoly>("ChaChaPoly");
-	result += CheckSymmetric<Crypter::Serpent>("Serpent");
-	result += CheckSymmetric<Crypter::TwoFish>("TwoFish");
-	auto rsaKey = KeyPair::RSA::Generate(2048);
-	ASSERT_TRUE(rsaKey);
-	Crypter::RSA rsa(rsaKey);
-	result += CheckAsymmetric("RSA-2048", rsa);
-	for (const unsigned short bits : { 256, 384, 521 }) {
-		auto eccKey = KeyPair::ECC::Generate(bits);
-		ASSERT_TRUE(eccKey);
-		Crypter::ECC ecc(eccKey);
-		const auto name = "ECC-" + std::to_string(bits);
-		result += CheckAsymmetric(name.c_str(), ecc);
-	}
-	std::cout << result << " failures across 340 stream cases.\n";
-	return result == 0 ? 0 : 1;
 }

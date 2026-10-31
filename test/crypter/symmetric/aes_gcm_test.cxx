@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/crypto/crypter/symmetric/aes_gcm.hxx>
 #include <StormByte/crypto/secure/password.hxx>
@@ -136,6 +137,10 @@ int test_aes_gcm_authentication_integrity() {
 	RETURN_TEST(0);
 }
 
+int test_aes_gcm_stream_error_propagation() {
+	return Test::StreamError::CheckSymmetric<Crypter::AES_GCM>();
+}
+
 int main() {
 	int result = 0;
 
@@ -151,6 +156,7 @@ int main() {
 	// -------------------
 	result += test_aes_gcm_wrong_password();
 	result += test_aes_gcm_authentication_integrity();
+	result += test_aes_gcm_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

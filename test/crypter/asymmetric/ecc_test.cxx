@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/crypter/asymmetric/ecc.hxx>
@@ -283,6 +284,21 @@ int test_ecc_hybrid_decrypt_with_mismatched_key() {
 	RETURN_TEST(0);
 }
 
+int test_ecc_stream_error_propagation() {
+	int result = 0;
+	for (const unsigned short bits : { 256, 384, 521 }) {
+		auto kp = KeyPair::ECC::Generate(bits);
+		ASSERT_TRUE(kp);
+		Crypter::ECC ecc(kp);
+		result += Test::StreamError::CheckAsymmetric(ecc,
+			[&](StormByte::Buffer::Consumer input, Crypter::Asymmetric::Strategy strategy,
+				StormByte::Crypto::ReadMode mode) {
+				return ecc.Encrypt(input, strategy, mode);
+			});
+	}
+	return result;
+}
+
 int main() {
 	int result = 0;
 
@@ -311,6 +327,7 @@ int main() {
 	result += test_ecc_corrupted_hybrid_envelope_fails();
 	result += test_ecc_corrupted_native_fails_auto_detect();
 	result += test_ecc_hybrid_decrypt_with_mismatched_key();
+	result += test_ecc_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

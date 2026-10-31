@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/buffer/fifo.hxx>
 #include <StormByte/buffer/producer.hxx>
@@ -218,6 +219,10 @@ int test_blake2b_hash_using_consumer_producer() {
 	RETURN_TEST(0);
 }
 
+int test_blake2b_stream_error_propagation() {
+	return Test::StreamError::CheckHasher<Hasher::Blake2b>();
+}
+
 int main() {
 	int result = 0;
 
@@ -256,6 +261,7 @@ int main() {
 	// Stream
 	// -------------------
 	result += test_blake2b_hash_using_consumer_producer();
+	result += test_blake2b_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

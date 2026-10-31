@@ -38,6 +38,8 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
  */
 
+#include "stream_error_helpers.hxx"
+
 #include <StormByte/buffer/fifo.hxx>
 #include <StormByte/crypto/crypter/symmetric/serpent.hxx>
 #include <StormByte/crypto/secure/password.hxx>
@@ -235,6 +237,10 @@ int test_serpent_encryption_produces_different_content() {
 	RETURN_TEST(0);
 }
 
+int test_serpent_stream_error_propagation() {
+	return Test::StreamError::CheckSymmetric<Crypter::Serpent>();
+}
+
 int main() {
 	int result = 0;
 
@@ -264,6 +270,7 @@ int main() {
 	// -------------------
 	result += test_serpent_encrypt_decrypt_consistency();
 	result += test_serpent_encryption_produces_different_content();
+	result += test_serpent_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

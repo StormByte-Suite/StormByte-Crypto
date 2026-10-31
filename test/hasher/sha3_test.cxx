@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/buffer/fifo.hxx>
 #include <StormByte/crypto/hasher/sha3_256.hxx>
@@ -219,6 +220,11 @@ int test_sha3_move() {
 	RETURN_TEST(0);
 }
 
+int test_sha3_stream_error_propagation() {
+	return Test::StreamError::CheckHasher<Hasher::SHA3_256>()
+		+ Test::StreamError::CheckHasher<Hasher::SHA3_512>();
+}
+
 int main() {
 	int result = 0;
 
@@ -255,6 +261,7 @@ int main() {
 	result += test_sha3_clone<Hasher::SHA3_512>();
 	result += test_sha3_move<Hasher::SHA3_256>();
 	result += test_sha3_move<Hasher::SHA3_512>();
+	result += test_sha3_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;

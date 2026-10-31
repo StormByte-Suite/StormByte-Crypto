@@ -39,6 +39,7 @@
  */
 
 #include "helpers.hxx"
+#include "stream_error_helpers.hxx"
 
 #include <StormByte/buffer/producer.hxx>
 #include <StormByte/crypto/crypter/symmetric/camellia.hxx>
@@ -252,6 +253,10 @@ int test_camellia_stream_truncated_header() {
 	RETURN_TEST(0);
 }
 
+int test_camellia_stream_error_propagation() {
+	return Test::StreamError::CheckSymmetric<Crypter::Camellia>();
+}
+
 int main() {
 	int result = 0;
 
@@ -282,6 +287,7 @@ int main() {
 	result += test_camellia_stream_binary_chunks();
 	result += test_camellia_stream_empty_plaintext();
 	result += test_camellia_stream_truncated_header();
+	result += test_camellia_stream_error_propagation();
 
 	if (result == 0)
 		std::cout << "All tests passed!" << std::endl;
