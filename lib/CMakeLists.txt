@@ -20,6 +20,10 @@ buildmaster_component(
 	"BACKEND=host;ALIAS=StormByte::Crypto"
 )
 
+if(WITH_OPENSSL STREQUAL "SYSTEM")
+	target_link_libraries(StormByte-Crypto PRIVATE OpenSSL)
+endif()
+
 if(BUILD_SHARED_LIBS)
 	target_compile_definitions(StormByte-Crypto PUBLIC STORMBYTE_CRYPTO_SHARED)
 endif()
@@ -34,12 +38,12 @@ set_target_properties(StormByte-Crypto PROPERTIES
 	VISIBILITY_INLINES_HIDDEN ON
 )
 
-if(BUILD_SHARED_LIBS AND APPLE)
+if(BUILD_SHARED_LIBS AND WITH_OPENSSL STREQUAL "BUNDLED" AND APPLE)
 	target_link_options(StormByte-Crypto PRIVATE
 		"LINKER:-hidden-lssl"
 		"LINKER:-hidden-lcrypto"
 	)
-elseif(BUILD_SHARED_LIBS AND UNIX)
+elseif(BUILD_SHARED_LIBS AND WITH_OPENSSL STREQUAL "BUNDLED" AND UNIX)
 	target_link_options(StormByte-Crypto PRIVATE
 		"LINKER:--exclude-libs,libssl.a:libcrypto.a"
 	)

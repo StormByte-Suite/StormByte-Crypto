@@ -9,7 +9,7 @@
 
 This repository is **StormByte Crypto**: hash, compress, encrypt, sign and key agreement for the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Public headers live under `StormByte/crypto/`. Crypto++ and OpenSSL are private implementation dependencies: installed headers expose neither library's types. Bundled builds link both statically; consumers do not install either dependency.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Public headers live under `StormByte/crypto/`. Crypto++ and OpenSSL are private implementation dependencies: installed headers expose neither library's types. Bundled builds link them statically; `WITH_OPENSSL=SYSTEM` uses installed OpenSSL shared libraries.
 
 The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedia, Network and System are **other repositories**. This one does not implement them.
 
@@ -17,7 +17,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 - **Hasher** — SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b, BLAKE2s. One-shot hex digest or a `Buffer::Consumer` that yields the digest when the source closes.
 - **HMAC** — One-shot HMAC-SHA-256 and HMAC-SHA-384 with binary full-length tags, wiped `Secure::Password` keys, typed errors and constant-time tag verification.
-- **TLS** — TLS 1.3 client/server sessions backed by pinned, statically linked OpenSSL 3.5.9. Sessions exchange ciphertext and plaintext through bounded caller-owned buffers; Crypto does no socket, DNS, HTTP or filesystem I/O.
+- **TLS** — TLS 1.3 client/server sessions backed by OpenSSL 3.0 or newer. `WITH_OPENSSL=BUNDLED` (default) statically links pinned OpenSSL 3.5.9; `WITH_OPENSSL=SYSTEM` uses installed shared libraries. Sessions exchange ciphertext and plaintext through bounded caller-owned buffers; Crypto does no socket, DNS, HTTP or filesystem I/O.
 - **Random** — Cryptographically secure bytes as `Safe::SecureBinary` and unbiased printable ASCII text as `Safe::String`, using the existing per-thread generator.
 - **Compressor** — Zlib, Gzip, BZip2. Same block / stream contract as the rest of the module.
 - **Symmetric crypter** — AES CBC, AES-GCM, ChaCha20-Poly1305, Camellia, Serpent, Twofish. Keys from `Secure::Password` via PBKDF2-HMAC-SHA256 (600 000 iterations). Authenticated modes fail closed on a bad tag or a wrong password.
@@ -70,7 +70,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 ## Installation
 
-Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.3, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL 3.5.9 (pinned with its CMake port) and libbzip2 are build dependencies. OpenSSL is compiled statically into Crypto and is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
+Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.3, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL and libbzip2 are build dependencies. `WITH_OPENSSL=BUNDLED` (default) builds pinned OpenSSL 3.5.9 and its pinned CMake port statically into Crypto. `WITH_OPENSSL=SYSTEM` requires OpenSSL 3.0+ development files and links the installed shared libraries. Windows forces `BUNDLED`, matching StormByte-Database. OpenSSL is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
 
 ```sh
 git clone --recursive https://github.com/StormByte-Suite/StormByte-Crypto.git
@@ -78,6 +78,17 @@ cd StormByte-Crypto
 cmake -S . -B build
 cmake --build build
 ```
+
+Select the OpenSSL backend at configure time:
+
+```sh
+cmake -S . -B build-bundled -DWITH_OPENSSL=BUNDLED
+cmake -S . -B build-system -DWITH_OPENSSL=SYSTEM
+```
+
+Changing the backend requires a clean build directory. Bundled mode does not
+require an installed OpenSSL development package; System mode requires OpenSSL
+3.0+ headers and shared libraries discoverable by CMake.
 
 Shared vs static follows CMake `BUILD_SHARED_LIBS` (declared in `lib/`, default ON). A plain configure builds the shared library. `-DBUILD_SHARED_LIBS=OFF` builds a static archive; on Windows the headers then do not use `dllimport`. The downloaded archives are the same mode. Prefer a **static** Crypto++ link when you redistribute; that is independent of whether StormByte-Crypto itself is shared or static.
 
