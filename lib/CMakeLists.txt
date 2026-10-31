@@ -48,6 +48,9 @@ endif()
 
 if(WIN32)
 	target_compile_definitions(StormByte-Crypto PUBLIC UNICODE NOMINMAX)
+	target_link_libraries(StormByte-Crypto PRIVATE crypt32)
+elseif(APPLE)
+	target_link_libraries(StormByte-Crypto PRIVATE "-framework Security" "-framework CoreFoundation")
 endif()
 
 target_include_directories(StormByte-Crypto

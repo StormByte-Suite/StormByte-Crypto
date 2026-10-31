@@ -1,0 +1,210 @@
+/*
+ * Copyright (C) 2024-2026 David C. Manuelda (StormBytePP)
+ *
+ * This file is part of StormByte-Crypto.
+ *
+ * StormByte-Crypto original source is dual-licensed:
+ *
+ * 1. GNU Lesser General Public License v3.0 (or later)
+ *    You may redistribute and/or modify this file under the terms of the
+ *    GNU Lesser General Public License as published by the Free Software
+ *    Foundation, either version 3 of the License, or (at your option)
+ *    any later version.
+ *
+ * 2. Commercial license
+ *    Alternatively, this file may be used under the terms of a commercial
+ *    license agreement with the copyright holder
+ *    (David C. Manuelda <StormByte@gmail.com>).
+ *
+ * Both licenses apply only to original StormByte-Crypto source in this
+ * repository. They do not cover other StormByte modules or any third-party
+ * material shipped with this repository (including everything under
+ * thirdparty/, in particular Crypto++, bundled libbzip2, the StormByte-Buffer
+ * tree and the StormByte suite it vendors), which remains under its own license.
+ *
+ * Neither license grants any patent rights. Any patent licenses required
+ * to use this software or third-party components must be obtained separately
+ * from the patent holders.
+ *
+ * StormByte-Crypto is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * version 3 along with StormByte-Crypto. If not, see
+ * <https://www.gnu.org/licenses/lgpl-3.0.html>.
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later OR LicenseRef-StormByte-Commercial
+ */
+
+#pragma once
+
+#include <string_view>
+
+/**
+ * @namespace PublicChainFixtures
+ * @brief Public PayPal TLS chains captured on 2026-10-31; no private keys or credentials.
+ */
+namespace PublicChainFixtures {
+	/**
+	 * @brief api-m.paypal.com leaf; captured via bounded openssl s_client.
+	 */
+	inline constexpr std::string_view ProductionLeaf = R"CERT(-----BEGIN CERTIFICATE-----
+MIIHcjCCBlqgAwIBAgIQCg+lKNFLZRPTs8jyJrGmBzANBgkqhkiG9w0BAQsFADBZ
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMTMwMQYDVQQDEypE
+aWdpQ2VydCBHbG9iYWwgRzIgVExTIFJTQSBTSEEyNTYgMjAyMCBDQTEwHhcNMjYw
+NzE3MDAwMDAwWhcNMjcwMTMxMjM1OTU5WjBnMQswCQYDVQQGEwJVUzETMBEGA1UE
+CBMKQ2FsaWZvcm5pYTERMA8GA1UEBxMIU2FuIEpvc2UxFTATBgNVBAoTDFBheVBh
+bCwgSW5jLjEZMBcGA1UEAxMQYXBpLW0ucGF5cGFsLmNvbTCCASIwDQYJKoZIhvcN
+AQEBBQADggEPADCCAQoCggEBAJx1wa7j36uUXBHnVdKBaaw6fqn/Lnu86/KqXVHj
+YQAvWrAqSBJDjzCx1tKTTJ8Rkk6SDiC0FwDU1mD1W/hNX0rqGVa1jJ+fETlkOFxJ
+Z1s/ySeqH///kWDEP3kLjtv0iVoe4U3rr8pLLSgDn4D2+oqSDnZN9jd0gjxw/shH
++PfPLUcAjpAbxApomJR+TpIwGr1VVtC2r3EZDU4ZjR6zeP86rCuuha4K2Bta6aAR
+txIUthX2Z78WKMy7jcZIb1LMTGXnPzoPSA/pLN47rkQsHPwbeBinhb+D8SfHVU4u
+xuhVtJoH685dtCeO4citxCTilzlA8DRZpbrCFZKBvxXhy/sCAwEAAaOCBCYwggQi
+MB8GA1UdIwQYMBaAFHSFgMBmx9833s+9KTeqAx2+7c0XMB0GA1UdDgQWBBTM0hgz
+8tEP0tEGEimrOjaJ+SzfAzCBvQYDVR0RBIG1MIGyghBhcGktbS5wYXlwYWwuY29t
+ggxhLnBheXBhbC5jb22CGGFwaS1tLnNhbmRib3gucGF5cGFsLmNvbYIbb3JpZ2lu
+LWNoZC1hcGktbS5wYXlwYWwuY29tghtwaHgtb3JpZ2luLWFwaS1tLnBheXBhbC5j
+b22CHXNsYy1hLW9yaWdpbi1hcGktbS5wYXlwYWwuY29tgh1zbGMtYi1vcmlnaW4t
+YXBpLW0ucGF5cGFsLmNvbTA+BgNVHSAENzA1MDMGBmeBDAECAjApMCcGCCsGAQUF
+BwIBFhtodHRwOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwDgYDVR0PAQH/BAQDAgWg
+MBMGA1UdJQQMMAoGCCsGAQUFBwMBMIGfBgNVHR8EgZcwgZQwSKBGoESGQmh0dHA6
+Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEdsb2JhbEcyVExTUlNBU0hBMjU2
+MjAyMENBMS0xLmNybDBIoEagRIZCaHR0cDovL2NybDQuZGlnaWNlcnQuY29tL0Rp
+Z2lDZXJ0R2xvYmFsRzJUTFNSU0FTSEEyNTYyMDIwQ0ExLTEuY3JsMIGHBggrBgEF
+BQcBAQR7MHkwJAYIKwYBBQUHMAGGGGh0dHA6Ly9vY3NwLmRpZ2ljZXJ0LmNvbTBR
+BggrBgEFBQcwAoZFaHR0cDovL2NhY2VydHMuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0
+R2xvYmFsRzJUTFNSU0FTSEEyNTYyMDIwQ0ExLTEuY3J0MAwGA1UdEwEB/wQCMAAw
+ggF/BgorBgEEAdZ5AgQCBIIBbwSCAWsBaQB3AExj3JjlnB2riPYeij3ero+rRKM3
+e1+blMP7oZz8wb4mAAABn26GnscAAAQDAEgwRgIhAMWqpiSfdgTsM8Anlx2gtxN0
+oZltX1rHFtMnDYBhJWL/AiEAjKtKmxPv/qeZSfLOxEWkB2s5Lxe3zlXz3lX//QhT
+SYoAdwDW1Y2p0BdT82pKoMdXSQKv68fcLNOM2fdkyAyJGR6fAgAAAZ9uhp6+AAAE
+AwBIMEYCIQCQPPaku9PGgRWZy78t2DuFGgG9twamIV4dcDlnrpXqgAIhAOzR0G2D
+stKucwdwXynxUobZhhPrt6aQrN10gP/nbaEQAHUAHJ9oLOn68EVpUPgbloqH3dsy
+ENhM5siy44JSSsTPWZ8AAAGfboafgQAABAMARjBEAiBUq3eJC3T6NT4eTB0CPX8v
+Hicd841i9L0y9/9z7tPSxQIgV2Id5u+1k4cwC0iRkQWl4cHg33SpS98Hq6pUgaP4
+zrMwDQYJKoZIhvcNAQELBQADggEBAD0aMSfAm4nszsCoBiJ+g+o7eqRas0mmXwDP
+hlaGP6PIrli8gU6bmpayk3mX4xCUk3u8izRcn/RxXYefYJzxZTk5D/zt8cFvktX1
+Jwm/DYrS67tnTIqXZ/gTOhT/YIqWOBh1Rrbw/f6GWtQ1LDxZVI5pEaZP+hWuDB39
+4zjKlWdnGJ+nlbt0hixEB+Km3e4+KDdAvKfqe+wPHgRmwYcfrEQSbZ0V/i4qzbnS
+6fCxXecHc63NwBCiD2/PUgN5U4EHcTMUKBngWHf1OR7m4tRH4FGg8DP9P2Hp4CG0
+AQndUBocJGDNASPtKm7mgpxtadQOTCKwTaeIZeL3goDJWU0WQ+M=
+-----END CERTIFICATE-----
+)CERT";
+
+	/**
+	 * @brief api-m.paypal.com intermediate; captured via bounded openssl s_client.
+	 */
+	inline constexpr std::string_view ProductionIntermediate = R"CERT(-----BEGIN CERTIFICATE-----
+MIIEyDCCA7CgAwIBAgIQDPW9BitWAvR6uFAsI8zwZjANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0yMTAzMzAwMDAwMDBaFw0zMTAzMjkyMzU5NTlaMFkxCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxMzAxBgNVBAMTKkRpZ2lDZXJ0IEdsb2Jh
+bCBHMiBUTFMgUlNBIFNIQTI1NiAyMDIwIENBMTCCASIwDQYJKoZIhvcNAQEBBQAD
+ggEPADCCAQoCggEBAMz3EGJPprtjb+2QUlbFbSd7ehJWivH0+dbn4Y+9lavyYEEV
+cNsSAPonCrVXOFt9slGTcZUOakGUWzUb+nv6u8W+JDD+Vu/E832X4xT1FE3LpxDy
+FuqrIvAxIhFhaZAmunjZlx/jfWardUSVc8is/+9dCopZQ+GssjoP80j812s3wWPc
+3kbW20X+fSP9kOhRBx5Ro1/tSUZUfyyIxfQTnJcVPAPooTncaQwywa8WV0yUR0J8
+osicfebUTVSvQpmowQTCd5zWSOTOEeAqgJnwQ3DPP3Zr0UxJqyRewg2C/Uaoq2yT
+zGJSQnWS+Jr6Xl6ysGHlHx+5fwmY6D36g39HaaECAwEAAaOCAYIwggF+MBIGA1Ud
+EwEB/wQIMAYBAf8CAQAwHQYDVR0OBBYEFHSFgMBmx9833s+9KTeqAx2+7c0XMB8G
+A1UdIwQYMBaAFE4iVCAYlebjbuYP+vq5Eu0GF485MA4GA1UdDwEB/wQEAwIBhjAd
+BgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwdgYIKwYBBQUHAQEEajBoMCQG
+CCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wQAYIKwYBBQUHMAKG
+NGh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEdsb2JhbFJvb3RH
+Mi5jcnQwQgYDVR0fBDswOTA3oDWgM4YxaHR0cDovL2NybDMuZGlnaWNlcnQuY29t
+L0RpZ2lDZXJ0R2xvYmFsUm9vdEcyLmNybDA9BgNVHSAENjA0MAsGCWCGSAGG/WwC
+ATAHBgVngQwBATAIBgZngQwBAgEwCAYGZ4EMAQICMAgGBmeBDAECAzANBgkqhkiG
+9w0BAQsFAAOCAQEAkPFwyyiXaZd8dP3A+iZ7U6utzWX9upwGnIrXWkOH7U1MVl+t
+wcW1BSAuWdH/SvWgKtiwla3JLko716f2b4gp/DA/JIS7w7d7kwcsr4drdjPtAFVS
+slme5LnQ89/nD/7d+MS5EHKBCQRfz5eeLjJ1js+aWNJXMX43AYGyZm0pGrFmCW3R
+bpD0ufovARTFXFZkAdl9h6g4U5+LXUZtXMYnhIHUfoyMo5tS58aI7Dd8KvvwVVo4
+chDYABPPTHPbqjc1qCmBaZx2vN4Ye5DUys/vZwP9BFohFrH/6j/f3IL16/RZkiMN
+JCqVJUzKoZHm1Lesh3Sz8W2jmdv51b2EQJ8HmA==
+-----END CERTIFICATE-----
+)CERT";
+
+	/**
+	 * @brief api-m.sandbox.paypal.com leaf; captured via bounded openssl s_client.
+	 */
+	inline constexpr std::string_view SandboxLeaf = R"CERT(-----BEGIN CERTIFICATE-----
+MIIHcjCCBlqgAwIBAgIQCg+lKNFLZRPTs8jyJrGmBzANBgkqhkiG9w0BAQsFADBZ
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMTMwMQYDVQQDEypE
+aWdpQ2VydCBHbG9iYWwgRzIgVExTIFJTQSBTSEEyNTYgMjAyMCBDQTEwHhcNMjYw
+NzE3MDAwMDAwWhcNMjcwMTMxMjM1OTU5WjBnMQswCQYDVQQGEwJVUzETMBEGA1UE
+CBMKQ2FsaWZvcm5pYTERMA8GA1UEBxMIU2FuIEpvc2UxFTATBgNVBAoTDFBheVBh
+bCwgSW5jLjEZMBcGA1UEAxMQYXBpLW0ucGF5cGFsLmNvbTCCASIwDQYJKoZIhvcN
+AQEBBQADggEPADCCAQoCggEBAJx1wa7j36uUXBHnVdKBaaw6fqn/Lnu86/KqXVHj
+YQAvWrAqSBJDjzCx1tKTTJ8Rkk6SDiC0FwDU1mD1W/hNX0rqGVa1jJ+fETlkOFxJ
+Z1s/ySeqH///kWDEP3kLjtv0iVoe4U3rr8pLLSgDn4D2+oqSDnZN9jd0gjxw/shH
++PfPLUcAjpAbxApomJR+TpIwGr1VVtC2r3EZDU4ZjR6zeP86rCuuha4K2Bta6aAR
+txIUthX2Z78WKMy7jcZIb1LMTGXnPzoPSA/pLN47rkQsHPwbeBinhb+D8SfHVU4u
+xuhVtJoH685dtCeO4citxCTilzlA8DRZpbrCFZKBvxXhy/sCAwEAAaOCBCYwggQi
+MB8GA1UdIwQYMBaAFHSFgMBmx9833s+9KTeqAx2+7c0XMB0GA1UdDgQWBBTM0hgz
+8tEP0tEGEimrOjaJ+SzfAzCBvQYDVR0RBIG1MIGyghBhcGktbS5wYXlwYWwuY29t
+ggxhLnBheXBhbC5jb22CGGFwaS1tLnNhbmRib3gucGF5cGFsLmNvbYIbb3JpZ2lu
+LWNoZC1hcGktbS5wYXlwYWwuY29tghtwaHgtb3JpZ2luLWFwaS1tLnBheXBhbC5j
+b22CHXNsYy1hLW9yaWdpbi1hcGktbS5wYXlwYWwuY29tgh1zbGMtYi1vcmlnaW4t
+YXBpLW0ucGF5cGFsLmNvbTA+BgNVHSAENzA1MDMGBmeBDAECAjApMCcGCCsGAQUF
+BwIBFhtodHRwOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwDgYDVR0PAQH/BAQDAgWg
+MBMGA1UdJQQMMAoGCCsGAQUFBwMBMIGfBgNVHR8EgZcwgZQwSKBGoESGQmh0dHA6
+Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEdsb2JhbEcyVExTUlNBU0hBMjU2
+MjAyMENBMS0xLmNybDBIoEagRIZCaHR0cDovL2NybDQuZGlnaWNlcnQuY29tL0Rp
+Z2lDZXJ0R2xvYmFsRzJUTFNSU0FTSEEyNTYyMDIwQ0ExLTEuY3JsMIGHBggrBgEF
+BQcBAQR7MHkwJAYIKwYBBQUHMAGGGGh0dHA6Ly9vY3NwLmRpZ2ljZXJ0LmNvbTBR
+BggrBgEFBQcwAoZFaHR0cDovL2NhY2VydHMuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0
+R2xvYmFsRzJUTFNSU0FTSEEyNTYyMDIwQ0ExLTEuY3J0MAwGA1UdEwEB/wQCMAAw
+ggF/BgorBgEEAdZ5AgQCBIIBbwSCAWsBaQB3AExj3JjlnB2riPYeij3ero+rRKM3
+e1+blMP7oZz8wb4mAAABn26GnscAAAQDAEgwRgIhAMWqpiSfdgTsM8Anlx2gtxN0
+oZltX1rHFtMnDYBhJWL/AiEAjKtKmxPv/qeZSfLOxEWkB2s5Lxe3zlXz3lX//QhT
+SYoAdwDW1Y2p0BdT82pKoMdXSQKv68fcLNOM2fdkyAyJGR6fAgAAAZ9uhp6+AAAE
+AwBIMEYCIQCQPPaku9PGgRWZy78t2DuFGgG9twamIV4dcDlnrpXqgAIhAOzR0G2D
+stKucwdwXynxUobZhhPrt6aQrN10gP/nbaEQAHUAHJ9oLOn68EVpUPgbloqH3dsy
+ENhM5siy44JSSsTPWZ8AAAGfboafgQAABAMARjBEAiBUq3eJC3T6NT4eTB0CPX8v
+Hicd841i9L0y9/9z7tPSxQIgV2Id5u+1k4cwC0iRkQWl4cHg33SpS98Hq6pUgaP4
+zrMwDQYJKoZIhvcNAQELBQADggEBAD0aMSfAm4nszsCoBiJ+g+o7eqRas0mmXwDP
+hlaGP6PIrli8gU6bmpayk3mX4xCUk3u8izRcn/RxXYefYJzxZTk5D/zt8cFvktX1
+Jwm/DYrS67tnTIqXZ/gTOhT/YIqWOBh1Rrbw/f6GWtQ1LDxZVI5pEaZP+hWuDB39
+4zjKlWdnGJ+nlbt0hixEB+Km3e4+KDdAvKfqe+wPHgRmwYcfrEQSbZ0V/i4qzbnS
+6fCxXecHc63NwBCiD2/PUgN5U4EHcTMUKBngWHf1OR7m4tRH4FGg8DP9P2Hp4CG0
+AQndUBocJGDNASPtKm7mgpxtadQOTCKwTaeIZeL3goDJWU0WQ+M=
+-----END CERTIFICATE-----
+)CERT";
+
+	/**
+	 * @brief api-m.sandbox.paypal.com intermediate; captured via bounded openssl s_client.
+	 */
+	inline constexpr std::string_view SandboxIntermediate = R"CERT(-----BEGIN CERTIFICATE-----
+MIIEyDCCA7CgAwIBAgIQDPW9BitWAvR6uFAsI8zwZjANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0yMTAzMzAwMDAwMDBaFw0zMTAzMjkyMzU5NTlaMFkxCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxMzAxBgNVBAMTKkRpZ2lDZXJ0IEdsb2Jh
+bCBHMiBUTFMgUlNBIFNIQTI1NiAyMDIwIENBMTCCASIwDQYJKoZIhvcNAQEBBQAD
+ggEPADCCAQoCggEBAMz3EGJPprtjb+2QUlbFbSd7ehJWivH0+dbn4Y+9lavyYEEV
+cNsSAPonCrVXOFt9slGTcZUOakGUWzUb+nv6u8W+JDD+Vu/E832X4xT1FE3LpxDy
+FuqrIvAxIhFhaZAmunjZlx/jfWardUSVc8is/+9dCopZQ+GssjoP80j812s3wWPc
+3kbW20X+fSP9kOhRBx5Ro1/tSUZUfyyIxfQTnJcVPAPooTncaQwywa8WV0yUR0J8
+osicfebUTVSvQpmowQTCd5zWSOTOEeAqgJnwQ3DPP3Zr0UxJqyRewg2C/Uaoq2yT
+zGJSQnWS+Jr6Xl6ysGHlHx+5fwmY6D36g39HaaECAwEAAaOCAYIwggF+MBIGA1Ud
+EwEB/wQIMAYBAf8CAQAwHQYDVR0OBBYEFHSFgMBmx9833s+9KTeqAx2+7c0XMB8G
+A1UdIwQYMBaAFE4iVCAYlebjbuYP+vq5Eu0GF485MA4GA1UdDwEB/wQEAwIBhjAd
+BgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwdgYIKwYBBQUHAQEEajBoMCQG
+CCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wQAYIKwYBBQUHMAKG
+NGh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEdsb2JhbFJvb3RH
+Mi5jcnQwQgYDVR0fBDswOTA3oDWgM4YxaHR0cDovL2NybDMuZGlnaWNlcnQuY29t
+L0RpZ2lDZXJ0R2xvYmFsUm9vdEcyLmNybDA9BgNVHSAENjA0MAsGCWCGSAGG/WwC
+ATAHBgVngQwBATAIBgZngQwBAgEwCAYGZ4EMAQICMAgGBmeBDAECAzANBgkqhkiG
+9w0BAQsFAAOCAQEAkPFwyyiXaZd8dP3A+iZ7U6utzWX9upwGnIrXWkOH7U1MVl+t
+wcW1BSAuWdH/SvWgKtiwla3JLko716f2b4gp/DA/JIS7w7d7kwcsr4drdjPtAFVS
+slme5LnQ89/nD/7d+MS5EHKBCQRfz5eeLjJ1js+aWNJXMX43AYGyZm0pGrFmCW3R
+bpD0ufovARTFXFZkAdl9h6g4U5+LXUZtXMYnhIHUfoyMo5tS58aI7Dd8KvvwVVo4
+chDYABPPTHPbqjc1qCmBaZx2vN4Ye5DUys/vZwP9BFohFrH/6j/f3IL16/RZkiMN
+JCqVJUzKoZHm1Lesh3Sz8W2jmdv51b2EQJ8HmA==
+-----END CERTIFICATE-----
+)CERT";
+
+}

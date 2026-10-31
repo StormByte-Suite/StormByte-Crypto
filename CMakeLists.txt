@@ -29,5 +29,8 @@ add_subdirectory(doc)
 add_subdirectory(thirdparty)
 add_subdirectory(lib)
 add_subdirectory(test)
+if(ENABLE_TEST)
+	enable_testing()
+endif()
 
 include(cmake/install.cmake)

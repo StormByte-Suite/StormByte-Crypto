@@ -24,6 +24,21 @@ linked against.
 Compiled into this shared library
 ---------------------------------
 
+The library also embeds curated Mozilla NSS public TLS root certificate/trust
+DATA (not a new code dependency), under Mozilla Public License 2.0. The license
+is COPYING.MPL2. Its source form, complete selection/distrust manifest and
+reproduction instructions are thirdparty/trust/ in the corresponding release
+source archive described above. Original-source commercial/LGPL licensing does
+not replace the MPL grant on that material. Source revision:
+
+  https://github.com/mozilla/nss/tree/0a2b0c75fa036930d98331b721c0780693a3e17a
+
+Pinned certdata SHA-256:
+  3ec2b4d240dc12c747eaf450061db84af757c483bbda302f9e29ceb5d70be510
+
+Extracted public server-root PEM SHA-256 (117 admitted roots):
+  605910d60aa2dedf70cca0d048c17b60f6edb3931f8471dde17822b4df49b5a3
+
 The release builds compile both libraries below into libStormByte-Crypto.
 They are not installed as libraries of their own. A build configured with
 WITH_CRYPTOPP=SYSTEM or WITH_BZIP2=SYSTEM does not contain that library,

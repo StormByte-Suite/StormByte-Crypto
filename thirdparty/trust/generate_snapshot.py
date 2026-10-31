@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Offline, fail-closed extraction of the pinned NSS server trust snapshot."""
+import base64
+import hashlib
+import json
+import pathlib
+import re
+
+
+def require(condition, message):
+    """Reject unsafe or unreviewed input, including under python -O."""
+    if not condition:
+        raise ValueError(message)
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCE_HASH = "3ec2b4d240dc12c747eaf450061db84af757c483bbda302f9e29ceb5d70be510"
+REVISION = "0a2b0c75fa036930d98331b721c0780693a3e17a"
+SOURCE_URL = f"https://raw.githubusercontent.com/mozilla/nss/{REVISION}/lib/ckfw/builtins/certdata.txt"
+source = (ROOT / "thirdparty/trust/certdata.txt").read_bytes()
+require(hashlib.sha256(source).hexdigest() == SOURCE_HASH, "Unexpected source revision")
+objects = []
+current = {}
+lines = iter(source.decode("utf-8").splitlines())
+for line in lines:
+    if not line.startswith("CKA_"):
+        continue
+    key, kind, *rest = line.split(maxsplit=2)
+    require(rest or kind == "MULTILINE_OCTAL", line)
+    if key == "CKA_CLASS":
+        if current:
+            objects.append(current)
+        current = {}
+    require(key not in current, f"Duplicate attribute: {key}")
+    if kind == "MULTILINE_OCTAL":
+        text = ""
+        for value in lines:
+            if value == "END":
+                break
+            require(re.fullmatch(r"(\\[0-7]{3})+", value), value)
+            text += value
+        else:
+            raise ValueError("Unterminated octal value")
+        value = bytes(int(octet, 8) for octet in re.findall(r"\\([0-7]{3})", text))
+    else:
+        value = rest[0]
+    current[key] = value
+objects.append(current)
+allowed = {
+    "CKA_CLASS", "CKA_TOKEN", "CKA_PRIVATE", "CKA_MODIFIABLE", "CKA_LABEL",
+    "CKA_CERTIFICATE_TYPE", "CKA_SUBJECT", "CKA_ID", "CKA_ISSUER",
+    "CKA_SERIAL_NUMBER", "CKA_VALUE", "CKA_NSS_MOZILLA_CA_POLICY",
+    "CKA_NSS_SERVER_DISTRUST_AFTER", "CKA_NSS_EMAIL_DISTRUST_AFTER",
+    "CKA_CERT_SHA1_HASH", "CKA_CERT_MD5_HASH", "CKA_TRUST_SERVER_AUTH",
+    "CKA_TRUST_EMAIL_PROTECTION", "CKA_TRUST_CODE_SIGNING",
+    "CKA_TRUST_STEP_UP_APPROVED",
+}
+for obj in objects:
+    require(obj.keys() <= allowed, f"Unreviewed metadata: {obj.keys() - allowed}")
+certificates = [obj for obj in objects if obj["CKA_CLASS"] == "CKO_CERTIFICATE"]
+trusts = [obj for obj in objects if obj["CKA_CLASS"] == "CKO_NSS_TRUST"]
+require(len(certificates) > 100 and len(trusts) > 100, "Unexpected object count")
+trust_by_hash = {}
+for trust in trusts:
+    fingerprint = trust["CKA_CERT_SHA1_HASH"]
+    require(fingerprint not in trust_by_hash, "Ambiguous trust object")
+    trust_by_hash[fingerprint] = trust
+manifest = []
+pems = []
+for cert in certificates:
+    der = cert["CKA_VALUE"]
+    fingerprint = hashlib.sha1(der).digest()
+    trust = trust_by_hash[fingerprint]
+    for key in ("CKA_ISSUER", "CKA_SERIAL_NUMBER"):
+        require(cert[key] == trust[key], "Trust identity mismatch")
+    flag = trust["CKA_TRUST_SERVER_AUTH"]
+    require(flag in ("CKT_NSS_TRUSTED_DELEGATOR", "CKT_NSS_MUST_VERIFY_TRUST", "CKT_NSS_NOT_TRUSTED"),
+            "Unknown server trust flag")
+    cutoff = cert.get("CKA_NSS_SERVER_DISTRUST_AFTER")
+    require(cutoff in (None, "CK_FALSE") or isinstance(cutoff, bytes), "Unknown server distrust policy")
+    require(cert.get("CKA_NSS_MOZILLA_CA_POLICY") == "CK_TRUE", "Unknown CA policy")
+    # Deny the entire restricted root, including pre-cutoff issuances. This is
+    # intentionally stricter than NSS's leaf-issuance cutoff semantics.
+    admitted = flag == "CKT_NSS_TRUSTED_DELEGATOR" and cutoff == "CK_FALSE"
+    manifest.append({
+        "label": json.loads(cert["CKA_LABEL"]),
+        "sha256": hashlib.sha256(der).hexdigest(),
+        "server_auth": flag,
+        "server_distrust_after": cutoff.decode("ascii") if isinstance(cutoff, bytes) else None,
+        "server_distrust_attribute_present": cutoff is not None,
+        "admitted": admitted,
+    })
+    if admitted:
+        b64 = base64.b64encode(der).decode("ascii")
+        pems.append("-----BEGIN CERTIFICATE-----\n" +
+                    "\n".join(b64[i:i + 64] for i in range(0, len(b64), 64)) +
+                    "\n-----END CERTIFICATE-----\n")
+require(len(pems) > 100, "Unexpected admitted root count")
+bundle = "".join(pems)
+bundle_hash = hashlib.sha256(bundle.encode("ascii")).hexdigest()
+(ROOT / "thirdparty/trust/roots.pem").write_text(bundle, encoding="ascii")
+(ROOT / "thirdparty/trust/manifest.json").write_text(json.dumps({
+    "source": SOURCE_URL,
+    "revision": REVISION,
+    "source_date": "2026-10-20",
+    "retrieved_date": "2026-10-31",
+    "source_sha256": SOURCE_HASH,
+    "bundle_sha256": bundle_hash,
+    "license": "MPL-2.0",
+    "admitted_count": len(pems),
+    "roots": manifest,
+}, indent=2) + "\n")
+banner = (ROOT / "lib/public/StormByte/crypto/x509/tls_peer.hxx").read_text().split("#pragma once")[0]
+header = banner + """#pragma once
+
+// Generated by thirdparty/trust/generate_snapshot.py; do not edit.
+// Embedded certificate data is Mozilla NSS material under MPL-2.0.
+// Source, exclusions and redistribution notice: thirdparty/trust/.
+
+#include <cstddef>
+
+namespace StormByte::Crypto::X509::Detail {
+\t/// @brief Pinned, curated Mozilla server roots; certificate data is MPL-2.0.
+\tinline constexpr char BundledRoots[] = R"ROOTS(""" + bundle + """)ROOTS";
+
+\t/// @brief SHA-256 of the exact embedded PEM bytes, checked before parsing.
+\tinline constexpr char BundleSHA256[] = \"""" + bundle_hash + """\";
+
+\t/// @brief Number of explicitly admitted server roots.
+\tinline constexpr std::size_t BundleRootCount = """ + str(len(pems)) + """;
+
+\t/// @brief Pinned NSS source revision.
+\tinline constexpr char BundleRevision[] = \"""" + REVISION + """\";
+}
+"""
+(ROOT / "lib/private/StormByte/crypto/x509/bundled_roots.hxx").parent.mkdir(parents=True, exist_ok=True)
+(ROOT / "lib/private/StormByte/crypto/x509/bundled_roots.hxx").write_text(header)
+print(f"Admitted {len(pems)} of {len(certificates)} roots; bundle SHA-256 {bundle_hash}")

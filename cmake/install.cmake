@@ -9,3 +9,8 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/public/StormByte/"
 	PATTERN "*.h"
 	PATTERN "*.hxx"
 )
+install(FILES "${CMAKE_SOURCE_DIR}/COPYING.MPL2"
+	"${CMAKE_SOURCE_DIR}/thirdparty/trust/README.md"
+	"${CMAKE_SOURCE_DIR}/thirdparty/trust/manifest.json"
+	DESTINATION "${CMAKE_INSTALL_DATADIR}/StormByte-Crypto/trust"
+)

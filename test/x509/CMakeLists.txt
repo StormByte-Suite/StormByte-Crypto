@@ -25,3 +25,30 @@ add_test(NAME X509TLSPeerTests COMMAND X509TLSPeerTests)
 set_tests_properties(X509TLSPeerTests PROPERTIES
 	LABELS "x509;tls-peer"
 )
+
+add_executable(X509TrustPathTests trust_path_test.cxx)
+target_link_libraries(X509TrustPathTests StormByte::Crypto tests)
+add_test(NAME X509TrustPathTests COMMAND X509TrustPathTests)
+set_tests_properties(X509TrustPathTests PROPERTIES LABELS "x509;trust-path")
+
+# Verify that Linux ignores even hostile trust environment settings.
+if(NOT WIN32 AND NOT APPLE)
+	add_test(NAME X509TrustPathEnvironmentTests COMMAND X509TrustPathTests)
+	set_tests_properties(X509TrustPathEnvironmentTests PROPERTIES
+		LABELS "x509;trust-path"
+		ENVIRONMENT "SSL_CERT_FILE=/nonexistent/stormbyte-roots;SSL_CERT_DIR=/nonexistent/stormbyte-roots;CURL_CA_BUNDLE=/nonexistent/stormbyte-roots")
+endif()
+
+if(WIN32 OR APPLE)
+	add_executable(X509NativeTrustTests native_trust_test.cxx
+		"${PROJECT_SOURCE_DIR}/lib/private/StormByte/crypto/x509/native_trust.cxx")
+	target_compile_definitions(X509NativeTrustTests PRIVATE STORMBYTE_CRYPTO_TRUST_TESTING)
+	target_link_libraries(X509NativeTrustTests StormByte::Crypto tests)
+	if(WIN32)
+		target_link_libraries(X509NativeTrustTests PRIVATE crypt32)
+	else()
+		target_link_libraries(X509NativeTrustTests PRIVATE "-framework Security" "-framework CoreFoundation")
+	endif()
+	add_test(NAME X509NativeTrustTests COMMAND X509NativeTrustTests)
+	set_tests_properties(X509NativeTrustTests PROPERTIES LABELS "x509;trust-path;native" TIMEOUT 60)
+endif()
