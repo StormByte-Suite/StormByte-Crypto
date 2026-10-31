@@ -40,6 +40,7 @@
  */
 
 #include <StormByte/crypto/tls/session.hxx>
+#include <StormByte/crypto/x509/trust_path.hxx>
 #include <StormByte/test_handlers.h>
 
 #include <openssl/evp.h>
@@ -128,7 +129,8 @@ namespace {
 		if (!certificate || X509_set_version(certificate.get(), 2) != 1
 			|| ASN1_INTEGER_set(X509_get_serialNumber(certificate.get()), serial) != 1
 			|| !X509_gmtime_adj(X509_getm_notBefore(certificate.get()), -3600)
-			|| !X509_gmtime_adj(X509_getm_notAfter(certificate.get()), 86400L * 3650)
+			|| !X509_gmtime_adj(X509_getm_notAfter(certificate.get()),
+				86400L * (is_ca ? 3650 : 30))
 			|| X509_set_pubkey(certificate.get(), public_key) != 1)
 			return {nullptr, X509_free};
 
@@ -274,11 +276,47 @@ namespace {
 			Pump(server, client);
 			if (client.HandshakeComplete() && server.HandshakeComplete())
 				return true;
-			if (client.Status() == TLS::State::Failed || server.Status() == TLS::State::Failed)
+			if (client.Status() == TLS::State::Failed || server.Status() == TLS::State::Failed) {
+				std::cerr << "TLS handshake failed: client state=" << static_cast<int>(client.Status())
+					<< ", failure=" << static_cast<int>(client.Failure())
+					<< "; server state=" << static_cast<int>(server.Status())
+					<< ", failure=" << static_cast<int>(server.Failure()) << '\n';
 				return false;
+			}
 		}
+		std::cerr << "TLS handshake did not complete after 1000 pump iterations\n";
 		return false;
 	}
+}
+
+int test_tls_fixture_server_path_meets_platform_policy() {
+	auto fixtures = MakeFixtures();
+	ASSERT_TRUE(fixtures.root && fixtures.server && fixtures.client);
+	CryptoX509::Certificate server;
+	CryptoX509::Certificate client;
+	ASSERT_TRUE(ParseCertificate(fixtures.server.get(), server));
+	ASSERT_TRUE(ParseCertificate(fixtures.client.get(), client));
+	ASSERT_TRUE(server.NotAfter() - server.NotBefore() < std::chrono::days(31));
+	ASSERT_TRUE(client.NotAfter() - client.NotBefore() < std::chrono::days(31));
+	const auto configuration = ClientConfig(fixtures, "localhost");
+	const auto path = CryptoX509::ValidateCustomCATLSPath(server, {}, fixtures.parsed_root,
+		configuration.validation_time, configuration.identity);
+	if (!path)
+		std::cerr << "TLS fixture server path rejected: TrustPathError="
+			<< static_cast<int>(*path.error()) << '\n';
+	ASSERT_TRUE(path);
+
+#ifdef MACOS
+	// Native SSL policy must still reject excessively long-lived server certificates.
+	ASSERT_TRUE(X509_gmtime_adj(X509_getm_notAfter(fixtures.server.get()), 86400L * 3650));
+	ASSERT_TRUE(X509_sign(fixtures.server.get(), fixtures.root_key.get(), EVP_sha256()) > 0);
+	ASSERT_TRUE(ParseCertificate(fixtures.server.get(), server));
+	const auto excessive = CryptoX509::ValidateCustomCATLSPath(server, {}, fixtures.parsed_root,
+		configuration.validation_time, configuration.identity);
+	ASSERT_FALSE(excessive);
+	ASSERT_TRUE(*excessive.error() == CryptoX509::TrustPathError::NativePolicyRejected);
+#endif
+	RETURN_TEST(0);
 }
 
 int test_buffer_driven_tls13_rsa_pss_alpn_and_bidirectional_data() {
@@ -468,6 +506,7 @@ int test_ciphertext_backpressure_and_alert_drain_after_failure() {
 
 int main() {
 	int result = 0;
+	result += test_tls_fixture_server_path_meets_platform_policy();
 	result += test_buffer_driven_tls13_rsa_pss_alpn_and_bidirectional_data();
 	result += test_tls_rejects_wrong_identity_and_missing_revocation_evidence();
 	result += test_tls_rejects_invalid_policy_and_protocol_configuration();
