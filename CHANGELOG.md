@@ -19,7 +19,10 @@ If you landed here from a release link and have not read the tree:
 - License: GNU Lesser General Public License version 3 or later, [LICENSE](https://github.com/StormByte-Suite/StormByte-Crypto/blob/master/LICENSE)
 
 ## [Unreleased]
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.0...HEAD
+
+## [2.3.0] - 2026-10-31
+[2.3.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.2.1...2.3.0
 
 ### Added
 
