@@ -378,10 +378,11 @@ borrowed references must not outlive their snapshot. Safe Optional/Vector can
 retain policies. Keep compatible Crypto/Base providers loaded while these
 values exist. Base allocation errors propagate; no native backend type escapes.
 
-Certificate SAN DNS/IP identity comparison now exists (see Certificate chains), but
-before a session can be implemented the next X509 step must add certificate-purpose
-validation (server/client EKU and role-specific key usage with caller-selected
-trust/time), with positive and negative tests. Existing certificate parsing/chain verification
+Certificate SAN DNS/IP identity comparison and TLS 1.3 certificate-purpose checks
+now exist (see Certificate chains), but neither authenticates a peer. The next
+trust/chain step must compose caller-selected anchors and validation time with
+chain verification, expected identity and purpose checks, defining the supported
+trust profile and its limitations explicitly. Existing certificate parsing/chain verification
 does not by itself authenticate a TLS peer. TLS key-share wire encodings,
 CertificateVerify/Finished, transcript/key schedule, record sequence/nonce and
 usage limits, and real negotiation restricted to policy lists also remain pending.
@@ -565,6 +566,44 @@ auto ip = leaf->VerifyIPAddress(address);                  // 4 or 16 network-or
 `VerifyDNSName` drops one trailing dot, rejects empty, malformed, NUL-containing, wildcard or numeric-final-label names, requires ASCII A-labels for internationalized names (no IDNA conversion), and compares case-insensitively; a certificate `*.example.com` matches exactly one non-empty leftmost label. `VerifyIPAddress` compares raw bytes exactly with no textual parsing, DNS fallback or IPv4-mapped equivalence. The extension is validated strictly first, so a malformed entry returns `MalformedSubjectAltName` even when another entry matches; other results are `InvalidExpectedName`, `InvalidExpectedAddress`, `MissingSubjectAltName` and `NoMatch`. This is only a name comparison: it does not verify the chain, validity, key usage or extended key usage and does not authenticate a TLS peer.
 
 `X509::Load` takes DER or the first PEM `CERTIFICATE` block; `LoadAll` returns every block of a bundle and fails as a whole when one is malformed. `VerifyChain` checks every link's signature and name, every validity period (anchor included; pass a `TimePoint` to choose the instant), that each issuer is a v3 CA allowed to sign certificates whose path length covers the CAs below it, and that no certificate carries an unrecognized critical extension. The anchor's own signature is not checked: it is trusted by being supplied. Names are compared byte-for-byte; revocation (CRL/OCSP), name constraints and policies are not processed, and the leaf's key usage is left to the caller.
+
+TLS 1.3 signing-purpose validation is separate:
+
+```cpp
+auto serverPurpose = leaf->VerifyTLSPurpose(X509::TLSRole::Server); // Expected<void, X509::PurposeError>
+auto clientPurpose = leaf->VerifyTLSPurpose(X509::TLSRole::Client);
+```
+
+Under RFC 5280 §4.2.1.12, missing EKU is unrestricted. Present EKU must explicitly
+include `serverAuth` (`1.3.6.1.5.5.7.3.1`) or `clientAuth` (`1.3.6.1.5.5.7.3.2`)
+for the selected role. This conservative policy uses the RFC's permission to
+require a particular purpose even when `anyExtendedKeyUsage` (`2.5.29.37.0`) is
+present: anyEKU alone is rejected, while anyEKU plus the required explicit purpose
+is accepted. `1.3.6.1.5.5.7.3.0` is **not** anyEKU. Unknown well-formed OIDs and
+repeated purpose OIDs are allowed but do not grant a role. The complete non-empty
+DER sequence and all OID encodings are checked before accepting a match, for both
+critical and noncritical EKU. Duplicate extensions remain rejected at parsing.
+
+For **both** TLS 1.3 roles, present KU must permit `digitalSignature` (RFC 8446
+§4.4.2.2); `keyEncipherment`-only or `keyAgreement`-only does not suffice. Missing
+KU is unrestricted. The purpose check also requires strict DER named BIT STRING
+encoding over the nine defined bits: zero padding, at least one set bit, no
+undefined bits and no redundant trailing zero bits. Existing `Parse`,
+`HasKeyUsage` and `VerifyChain` behavior is unchanged.
+
+Typed errors, in precedence order, are `UnsupportedRole`, `InvalidCertificate`
+(empty or moved-from object), `MalformedExtendedKeyUsage`, `MalformedKeyUsage`,
+`ExtendedKeyUsageNotAllowed`, and `KeyUsageNotAllowed`. Error allocation failures
+propagate as `Safe::AllocationError`. Purpose results do **not** prove trust,
+validity, chain-wide EKU restrictions, critical-extension processing, end-entity
+classification, name identity, signature/key suitability or TLS authentication;
+CA flags are deliberately not consulted. Public RSA and EC keys can be loaded,
+but this does not add TLS RSA-PSS or CertificateVerify support. Applications must
+separately compose trust/chain/time, identity, usage and algorithm policy before
+authenticating a peer. Fixture regeneration uses
+`python3 test/x509/generate_purpose_fixtures.py` from the repository root; OpenSSL
+is only a generator tool, never a library or test-runtime dependency, and no
+private key is written to the repository.
 
 ## Security notes
 

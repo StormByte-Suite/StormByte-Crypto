@@ -80,6 +80,8 @@ namespace {
 	constexpr std::uint8_t OidBasicConstraints[] = {0x55, 0x1D, 0x13};
 	constexpr std::uint8_t OidKeyUsage[] = {0x55, 0x1D, 0x0F};
 	constexpr std::uint8_t OidExtendedKeyUsage[] = {0x55, 0x1D, 0x25};
+	constexpr std::uint8_t OidServerAuth[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};	///< serverAuth OID contents.
+	constexpr std::uint8_t OidClientAuth[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02};	///< clientAuth OID contents.
 	constexpr std::uint8_t OidSubjectKeyId[] = {0x55, 0x1D, 0x0E};
 	constexpr std::uint8_t OidAuthorityKeyId[] = {0x55, 0x1D, 0x23};
 	constexpr std::uint8_t OidSubjectAltName[] = {0x55, 0x1D, 0x11};
@@ -189,6 +191,66 @@ namespace {
 
 	const CryptoPP::byte* Raw(Bytes bytes) noexcept {
 		return reinterpret_cast<const CryptoPP::byte*>(bytes.data());
+	}
+
+	/**
+	 * @brief Validates DER OID contents without imposing machine-sized arc limits.
+	 * @param value OID contents, including the combined first two arcs.
+	 * @return true for non-empty, minimally encoded, terminated base-128 subidentifiers.
+	 */
+	bool IsValidOid(Bytes value) noexcept {
+		if (value.empty())
+			return false;
+		bool start = true;
+		for (const std::byte byte : value) {
+			const auto octet = std::to_integer<std::uint8_t>(byte);
+			if (start && octet == 0x80)
+				return false;
+			start = (octet & 0x80) == 0;
+		}
+		return start;
+	}
+
+	/**
+	 * @brief Strictly validates the complete EKU value and records a role match.
+	 * @param data EKU extnValue contents.
+	 * @param role Validated TLS role.
+	 * @param allowed Receives whether an explicit role OID occurs, on success.
+	 * @return false for an empty sequence, malformed TLV/OID or trailing bytes.
+	 */
+	bool ReadTLSExtendedKeyUsage(Bytes data, TLSRole role, bool& allowed) noexcept {
+		Reader holder(data, 0, data.size());
+		Element sequence;
+		if (!holder.Next(TagSequence, sequence) || !holder.AtEnd() || sequence.length == 0)
+			return false;
+		Reader entries(data, sequence);
+		allowed = false;
+		while (!entries.AtEnd()) {
+			Element oid;
+			if (!entries.Next(TagOid, oid) || !IsValidOid(Contents(data, oid)))
+				return false;
+			const Bytes value = Contents(data, oid);
+			allowed |= role == TLSRole::Server ? Equals(value, OidServerAuth) : Equals(value, OidClientAuth);
+		}
+		return true;
+	}
+
+	/**
+	 * @brief Validates KU as a DER named BIT STRING over the nine defined bits.
+	 * @param data KU extnValue contents.
+	 * @return true for 1..9 bits, zero padding, and a set final significant bit.
+	 */
+	bool IsValidTLSKeyUsage(Bytes data) noexcept {
+		Reader holder(data, 0, data.size());
+		Element bits;
+		if (!holder.Next(TagBitString, bits) || !holder.AtEnd() || bits.length < 2 || bits.length > 3)
+			return false;
+		const Bytes value = Contents(data, bits);
+		const unsigned unused = std::to_integer<unsigned>(value[0]);
+		if (unused > 7 || (value.size() - 1) * 8 - unused > 9)
+			return false;
+		const unsigned last = std::to_integer<unsigned>(value.back());
+		return (last & ((1u << unused) - 1)) == 0 && (last & (1u << unused)) != 0;
 	}
 
 	/**
@@ -714,6 +776,11 @@ bool Certificate::Parse(std::span<const std::byte> der, Certificate& out) noexce
 							mask |= static_cast<std::uint16_t>(1u << bit);
 					result.m_key_usage = mask;
 					result.m_has_key_usage = true;
+					result.m_key_usage_der = Range{value.value, value.length};
+				}
+				else if (Equals(id, OidExtendedKeyUsage)) {
+					result.m_extended_key_usage = Range{value.value, value.length};
+					result.m_has_extended_key_usage = true;
 				}
 				else if (Equals(id, OidSubjectAltName)) {
 					result.m_subject_alt_name = Range{value.value, value.length};
@@ -827,6 +894,23 @@ Safe::Optional<std::uint32_t> Certificate::PathLength() const {
 
 bool Certificate::HasKeyUsage(KeyUsage usage) const noexcept {
 	return !m_has_key_usage || (m_key_usage & static_cast<std::uint16_t>(usage)) != 0;
+}
+
+ExpectedPurpose Certificate::VerifyTLSPurpose(TLSRole role) const {
+	if (role != TLSRole::Server && role != TLSRole::Client)
+		return StormByte::Unexpected<PurposeError>(PurposeError::UnsupportedRole);
+	if (m_der.empty())
+		return StormByte::Unexpected<PurposeError>(PurposeError::InvalidCertificate);
+	bool allowed = true;
+	if (m_has_extended_key_usage && !ReadTLSExtendedKeyUsage(View(m_extended_key_usage), role, allowed))
+		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedExtendedKeyUsage);
+	if (m_has_key_usage && !IsValidTLSKeyUsage(View(m_key_usage_der)))
+		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedKeyUsage);
+	if (!allowed)
+		return StormByte::Unexpected<PurposeError>(PurposeError::ExtendedKeyUsageNotAllowed);
+	if (!HasKeyUsage(KeyUsage::DigitalSignature))
+		return StormByte::Unexpected<PurposeError>(PurposeError::KeyUsageNotAllowed);
+	return {};
 }
 
 StormByte::Crypto::KeyPair::Generic::PointerType Certificate::PublicKey() const noexcept {

@@ -11,3 +11,10 @@ add_test(NAME X509IdentityTests COMMAND X509IdentityTests)
 set_tests_properties(X509IdentityTests PROPERTIES
 	LABELS "x509;identity"
 )
+
+add_executable(X509PurposeTests purpose_test.cxx)
+target_link_libraries(X509PurposeTests StormByte::Crypto tests)
+add_test(NAME X509PurposeTests COMMAND X509PurposeTests)
+set_tests_properties(X509PurposeTests PROPERTIES
+	LABELS "x509;purpose"
+)

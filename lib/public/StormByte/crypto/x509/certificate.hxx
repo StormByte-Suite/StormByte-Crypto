@@ -112,6 +112,33 @@ namespace StormByte {
 			};
 
 			/**
+			 * @enum TLSRole
+			 * @brief Certificate signing role in TLS 1.3 (RFC 8446 §4.4.2.2).
+			 */
+			enum class TLSRole {
+				Server,	///< Certificate used by the TLS server.
+				Client	///< Certificate used by the TLS client.
+			};
+
+			/**
+			 * @enum PurposeError
+			 * @brief Errors of the narrowly scoped TLS certificate-purpose check.
+			 */
+			enum class PurposeError {
+				UnsupportedRole,			///< Role is not Server or Client.
+				InvalidCertificate,			///< Certificate is empty or moved from.
+				MalformedExtendedKeyUsage,	///< EKU is not a non-empty strict DER sequence of valid OIDs.
+				ExtendedKeyUsageNotAllowed,	///< Present EKU lacks the explicit role-specific purpose.
+				MalformedKeyUsage,			///< Present KU violates DER named-bit-string encoding or its 1..9-bit range.
+				KeyUsageNotAllowed			///< Present KU lacks digitalSignature.
+			};
+
+			/**
+			 * @brief Success when certificate usage permits a TLS role, or a typed error.
+			 */
+			using ExpectedPurpose = StormByte::Expected<void, PurposeError>;
+
+			/**
 			 * @class SubjectAltName
 			 * @brief One supported subjectAltName entry (a DNS name or an IP address).
 			 * @note Conditionally DLL-safe: the value is a Safe type and all operations are defined
@@ -408,6 +435,33 @@ namespace StormByte {
 					 * @return true when every link verifies.
 					 */
 					bool VerifyChain(std::span<const Certificate> intermediates, const Certificate& anchor) const noexcept;
+
+					/**
+					 * @brief Checks only EKU and KU for a TLS 1.3 certificate signing role.
+					 * @param role Server or Client; other enum values yield UnsupportedRole.
+					 * @return Success when usage permits the role, or a PurposeError.
+					 * @throws StormByte::Safe::AllocationError Error storage cannot be allocated.
+					 *
+					 * Missing EKU is unrestricted (RFC 5280 §4.2.1.12). Present EKU must
+					 * explicitly contain serverAuth (1.3.6.1.5.5.7.3.1) for Server or
+					 * clientAuth (1.3.6.1.5.5.7.3.2) for Client. Under the RFC's permission
+					 * to require a particular purpose, anyExtendedKeyUsage (2.5.29.37.0)
+					 * alone does not substitute for either; combined with the explicit
+					 * purpose it is accepted. Unknown well-formed OIDs and repeated purpose
+					 * OIDs are allowed but do not grant a role. Every OID is validated before
+					 * accepting any match, irrespective of the extension's critical flag.
+					 *
+					 * Missing KU is unrestricted; present KU must be a strict DER named
+					 * BIT STRING with at least one defined bit and digitalSignature set,
+					 * for both roles (RFC 8446 §4.4.2.2). keyEncipherment or keyAgreement
+					 * alone never suffices. This leaves Parse and HasKeyUsage unchanged.
+					 * Errors are checked in order: role, empty certificate, malformed EKU,
+					 * malformed KU, denied EKU, denied KU.
+					 * @note This is not leaf classification, trust, chain, validity, critical
+					 *       extension processing, signature/key suitability or peer authentication.
+					 *       CA flags are not checked; identity verification remains separate.
+					 */
+					ExpectedPurpose VerifyTLSPurpose(TLSRole role) const;
 					/** @} */
 
 					/**
@@ -492,6 +546,8 @@ namespace StormByte {
 					Range m_subject;						///< Full subject Name element.
 					Range m_public_key;						///< Full SubjectPublicKeyInfo element.
 					Range m_subject_alt_name;				///< subjectAltName extnValue contents (the GeneralNames SEQUENCE).
+					Range m_extended_key_usage;	///< EKU extnValue contents; decoded only for purpose validation.
+					Range m_key_usage_der;	///< KU extnValue contents; strict purpose validation preserves Parse semantics.
 					std::int64_t m_not_before = 0;			///< notBefore, seconds since the epoch.
 					std::int64_t m_not_after = 0;			///< notAfter, seconds since the epoch.
 					std::uint32_t m_path_length = 0;		///< Path length constraint when present.
@@ -502,6 +558,7 @@ namespace StormByte {
 					bool m_has_key_usage = false;			///< keyUsage present.
 					bool m_unknown_critical = false;		///< Unrecognized critical extension present.
 					bool m_has_subject_alt_name = false;	///< subjectAltName present.
+					bool m_has_extended_key_usage = false;	///< extendedKeyUsage present.
 
 
 					/**
