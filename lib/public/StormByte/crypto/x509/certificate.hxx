@@ -42,6 +42,7 @@
 
 #include <StormByte/crypto/keypair/generic.hxx>
 #include <StormByte/crypto/visibility.h>
+#include <StormByte/expected.hxx>
 #include <StormByte/safe/binary.hxx>
 #include <StormByte/safe/optional.hxx>
 #include <StormByte/safe/string.hxx>
@@ -51,6 +52,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 /**
  * @namespace StormByte
@@ -87,6 +89,127 @@ namespace StormByte {
 				EncipherOnly		= 1u << 7,	///< encipherOnly
 				DecipherOnly		= 1u << 8	///< decipherOnly
 			};
+
+			/**
+			 * @enum SubjectAltNameType
+			 * @brief Supported subjectAltName general name kinds (RFC 5280 §4.2.1.6).
+			 */
+			enum class SubjectAltNameType {
+				DNS,	///< dNSName, an ASCII host name or a leftmost-label wildcard pattern.
+				IP		///< iPAddress, 4 (IPv4) or 16 (IPv6) network-order bytes.
+			};
+
+			/**
+			 * @enum IdentityError
+			 * @brief Errors of subjectAltName extraction and expected-identity verification.
+			 */
+			enum class IdentityError {
+				InvalidExpectedName,		///< The expected DNS name is not an acceptable ASCII host name.
+				InvalidExpectedAddress,		///< The expected IP address is not exactly 4 or 16 bytes.
+				MissingSubjectAltName,		///< The certificate has no subjectAltName extension.
+				MalformedSubjectAltName,	///< The subjectAltName extension or one of its entries is malformed.
+				NoMatch						///< The extension is well formed but no entry matches the expected identity.
+			};
+
+			/**
+			 * @class SubjectAltName
+			 * @brief One supported subjectAltName entry (a DNS name or an IP address).
+			 * @note Conditionally DLL-safe: the value is a Safe type and all operations are defined
+			 *       out of line in Crypto.
+			 */
+			class STORMBYTE_CRYPTO_PUBLIC SubjectAltName {
+				public:
+					/**
+					 * @brief Empty DNS entry with no value.
+					 */
+					SubjectAltName() noexcept;
+
+					/**
+					 * @brief Builds an entry.
+					 * @param type Kind of the entry.
+					 * @param value Raw bytes: ASCII text for DNS, network-order address bytes for IP.
+					 */
+					SubjectAltName(SubjectAltNameType type, Safe::Binary value);
+
+					/**
+					 * @brief Copy constructor.
+					 * @param other Entry to copy.
+					 */
+					SubjectAltName(const SubjectAltName& other);
+
+					/**
+					 * @brief Move constructor.
+					 * @param other Entry to move.
+					 */
+					SubjectAltName(SubjectAltName&& other) noexcept;
+
+					/**
+					 * @brief Destructor.
+					 */
+					~SubjectAltName() noexcept;
+
+					/**
+					 * @brief Copy assignment.
+					 * @param other Entry to copy.
+					 * @return Reference to this entry.
+					 */
+					SubjectAltName& operator=(const SubjectAltName& other);
+
+					/**
+					 * @brief Move assignment.
+					 * @param other Entry to move.
+					 * @return Reference to this entry.
+					 */
+					SubjectAltName& operator=(SubjectAltName&& other) noexcept;
+
+					/**
+					 * @brief Returns the kind of the entry.
+					 * @return DNS or IP.
+					 */
+					SubjectAltNameType Type() const noexcept;
+
+					/**
+					 * @brief Returns the raw value.
+					 * @return Certificate bytes: DNS names keep their original case and wildcard,
+					 *         IP addresses are 4 or 16 bytes.
+					 */
+					const Safe::Binary& Value() const noexcept;
+
+				private:
+					SubjectAltNameType m_type;	///< Kind of the entry.
+					Safe::Binary m_value;		///< Raw entry value.
+			};
+
+		}
+	}
+}
+
+STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::X509::SubjectAltName);
+
+/**
+ * @namespace StormByte
+ * @brief Root namespace of the StormByte suite.
+ */
+namespace StormByte {
+	/**
+	 * @namespace StormByte::Crypto
+	 * @brief Crypto module of the StormByte suite.
+	 */
+	namespace Crypto {
+		/**
+		 * @namespace StormByte::Crypto::X509
+		 * @brief X.509 certificate parsing and chain verification.
+		 */
+		namespace X509 {
+			/**
+			 * @brief Supported subjectAltName entries, or a typed extraction error.
+			 */
+			using ExpectedSubjectAltNames = StormByte::Expected<Safe::Vector<SubjectAltName>, IdentityError>;
+
+			/**
+			 * @brief Success when the expected identity is present, or a typed error.
+			 */
+			using ExpectedIdentity = StormByte::Expected<void, IdentityError>;
 
 			/**
 			 * @class Certificate
@@ -287,6 +410,69 @@ namespace StormByte {
 					bool VerifyChain(std::span<const Certificate> intermediates, const Certificate& anchor) const noexcept;
 					/** @} */
 
+					/**
+					 * @name Identity
+					 * @{
+					 */
+					/**
+					 * @brief Extracts the supported entries of the subjectAltName extension.
+					 * @return dNSName and iPAddress entries in certificate order, or an error.
+					 * @throws StormByte::Safe::AllocationError Entry or error storage cannot be allocated.
+					 *
+					 * The whole extension is validated strictly: a non-empty DER SEQUENCE of
+					 * general names with known context tags, non-empty contents, dNSName values
+					 * that are valid ASCII host names (labels of letters, digits and inner
+					 * hyphens, at most 63 bytes each, 253 in total, no trailing dot, final label
+					 * not all digits) or a wildcard whose complete leftmost label is `*` over at
+					 * least two further labels, and iPAddress values of exactly 4 or 16 bytes.
+					 * Other well-formed general-name kinds (email, URI, directory, other) are
+					 * skipped. Any malformed entry fails the whole call with
+					 * @ref IdentityError::MalformedSubjectAltName; an absent extension yields
+					 * @ref IdentityError::MissingSubjectAltName. The subject common name is never
+					 * consulted. Duplicate extensions are already rejected by @ref Parse.
+					 */
+					ExpectedSubjectAltNames SubjectAltNames() const;
+
+					/**
+					 * @brief Checks that the certificate asserts an expected DNS host name.
+					 * @param expected ASCII host name supplied by the caller (for example from the
+					 *        connection URL), never taken from this certificate. Internationalized
+					 *        names must already be ASCII A-labels; no IDNA conversion is done.
+					 * @return Success when a dNSName entry matches, or an error.
+					 * @throws StormByte::Safe::AllocationError Entry or error storage cannot be allocated.
+					 *
+					 * @p expected is normalized by dropping exactly one trailing dot and is
+					 * rejected with @ref IdentityError::InvalidExpectedName when empty, malformed,
+					 * containing NUL or non-hostname bytes, a wildcard, or ending in an all-digit
+					 * label (IP literals must use @ref VerifyIPAddress). Matching is a full,
+					 * ASCII case-insensitive comparison against dNSName entries only. A wildcard
+					 * entry matches exactly one non-empty leftmost label (`*.example.com` matches
+					 * `www.example.com`, not `example.com` or `a.b.example.com`). The common name
+					 * is never a fallback and DNS names never match iPAddress entries. The
+					 * extension is validated as in @ref SubjectAltNames before any matching, so a
+					 * malformed entry fails even when another entry matches; no matching entry
+					 * yields @ref IdentityError::NoMatch.
+					 * @note This only compares names. It does not verify a chain, validity,
+					 *       key usage or extended key usage and does not authenticate a peer.
+					 */
+					ExpectedIdentity VerifyDNSName(std::string_view expected) const;
+
+					/**
+					 * @brief Checks that the certificate asserts an expected IP address.
+					 * @param expected Binary address supplied by the caller: 4 bytes (IPv4) or
+					 *        16 bytes (IPv6) in network order; any other size is rejected with
+					 *        @ref IdentityError::InvalidExpectedAddress.
+					 * @return Success when an iPAddress entry has exactly the same bytes, or an error.
+					 * @throws StormByte::Safe::AllocationError Entry or error storage cannot be allocated.
+					 *
+					 * Comparison is exact over the bytes; there is no textual parsing, no DNS
+					 * fallback, no wildcard and no IPv4-mapped IPv6 equivalence. Extension
+					 * validation and errors follow @ref VerifyDNSName.
+					 * @note This only compares addresses; it is not chain or peer authentication.
+					 */
+					ExpectedIdentity VerifyIPAddress(std::span<const std::byte> expected) const;
+					/** @} */
+
 				private:
 					/**
 					 * @struct Range
@@ -305,6 +491,7 @@ namespace StormByte {
 					Range m_issuer;							///< Full issuer Name element.
 					Range m_subject;						///< Full subject Name element.
 					Range m_public_key;						///< Full SubjectPublicKeyInfo element.
+					Range m_subject_alt_name;				///< subjectAltName extnValue contents (the GeneralNames SEQUENCE).
 					std::int64_t m_not_before = 0;			///< notBefore, seconds since the epoch.
 					std::int64_t m_not_after = 0;			///< notAfter, seconds since the epoch.
 					std::uint32_t m_path_length = 0;		///< Path length constraint when present.
@@ -314,6 +501,7 @@ namespace StormByte {
 					bool m_has_path_length = false;			///< Path length constraint present.
 					bool m_has_key_usage = false;			///< keyUsage present.
 					bool m_unknown_critical = false;		///< Unrecognized critical extension present.
+					bool m_has_subject_alt_name = false;	///< subjectAltName present.
 
 
 					/**

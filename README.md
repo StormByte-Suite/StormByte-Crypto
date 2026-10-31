@@ -25,7 +25,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 - **Signer** — DSA, RSA PKCS#1 v1.5 + SHA-256, ECDSA, Ed25519. Block and streaming sign / verify.
 - **Secret** — ECDH on secp256r1 / secp384r1 / secp521r1, and X25519. The shared secret is a `Secure::Password`, not a `std::string`.
 - **KeyPair** — Generate, persist PEM or DER, optional PKCS#8 (PBES2 + PBKDF2 + AES-256-CBC, OpenSSL-compatible). Public key travels as `StormByte::Safe::String` (Base64 SPKI); private key stays in a `Secure::Password`. Handles are `StormByte::Safe::Clonable` with `Safe::Shared` (`KeyPair::Generic::PointerType`).
-- **X509** — Strict DER/PEM certificate parsing and chain verification up to a trusted anchor: ecdsa-with-SHA256/384/512 and sha256/384/512WithRSAEncryption signatures, validity periods, basicConstraints (CA flag and path length), keyUsage and rejection of unknown critical extensions.
+- **X509** — Strict DER/PEM certificate parsing and chain verification up to a trusted anchor: ecdsa-with-SHA256/384/512 and sha256/384/512WithRSAEncryption signatures, validity periods, basicConstraints (CA flag and path length), keyUsage and rejection of unknown critical extensions, plus strict subjectAltName DNS/IP extraction and expected-identity name checks.
 - **Secure::Password / Secure::Vault** — wiped secret buffer and named store under `StormByte::Crypto::Secure`. Last owner zeros the bytes. Vault is movable, not copyable. `Password::Size()` is `StormByte::ByteSize`. A missing `Vault::Get` is `StormByte.Crypto.Secure.Vault: …`.
 - **Buffer-first I/O** — `std::span<const std::byte>` → `Buffer::WriteOnly` for blocks; `Buffer::Consumer` in / out for pipelines (Network, Multimedia). Octet payloads are `StormByte::Safe::Binary`. Abstract counts use `StormByte::Size`; octet lengths use `StormByte::ByteSize`. Borrowed text inputs generally use `std::string_view`; key agreement borrows a `const Safe::String&`.
 
@@ -378,10 +378,10 @@ borrowed references must not outlive their snapshot. Safe Optional/Vector can
 retain policies. Keep compatible Crypto/Base providers loaded while these
 values exist. Base allocation errors propagate; no native backend type escapes.
 
-Before a session can be implemented, the next X509 step must add explicit
-TLS peer identity and certificate-purpose validation (SAN/hostname checks,
-server/client EKU and role-specific key usage with caller-selected trust/time),
-with positive and negative tests. Existing certificate parsing/chain verification
+Certificate SAN DNS/IP identity comparison now exists (see Certificate chains), but
+before a session can be implemented the next X509 step must add certificate-purpose
+validation (server/client EKU and role-specific key usage with caller-selected
+trust/time), with positive and negative tests. Existing certificate parsing/chain verification
 does not by itself authenticate a TLS peer. TLS key-share wire encodings,
 CertificateVerify/Finished, transcript/key schedule, record sequence/nonce and
 usage limits, and real negotiation restricted to policy lists also remain pending.
@@ -553,6 +553,16 @@ bool trusted = anchor && leaf
 	&& leaf->HasKeyUsage(X509::KeyUsage::DigitalSignature);
 auto key = trusted ? leaf->PublicKey() : nullptr;	// public-only KeyPair for Signer
 ```
+
+Expected identities are compared against the subjectAltName extension only, never the common name, and are supplied by the caller (for example from the connection URL), never taken from the certificate:
+
+```cpp
+auto dns = leaf->VerifyDNSName("www.example.com");        // Expected<void, X509::IdentityError>
+const std::array<std::byte, 4> address{std::byte{192}, std::byte{0}, std::byte{2}, std::byte{10}};
+auto ip = leaf->VerifyIPAddress(address);                  // 4 or 16 network-order bytes
+```
+
+`VerifyDNSName` drops one trailing dot, rejects empty, malformed, NUL-containing, wildcard or numeric-final-label names, requires ASCII A-labels for internationalized names (no IDNA conversion), and compares case-insensitively; a certificate `*.example.com` matches exactly one non-empty leftmost label. `VerifyIPAddress` compares raw bytes exactly with no textual parsing, DNS fallback or IPv4-mapped equivalence. The extension is validated strictly first, so a malformed entry returns `MalformedSubjectAltName` even when another entry matches; other results are `InvalidExpectedName`, `InvalidExpectedAddress`, `MissingSubjectAltName` and `NoMatch`. This is only a name comparison: it does not verify the chain, validity, key usage or extended key usage and does not authenticate a TLS peer.
 
 `X509::Load` takes DER or the first PEM `CERTIFICATE` block; `LoadAll` returns every block of a bundle and fails as a whole when one is malformed. `VerifyChain` checks every link's signature and name, every validity period (anchor included; pass a `TimePoint` to choose the instant), that each issuer is a v3 CA allowed to sign certificates whose path length covers the CAs below it, and that no certificate carries an unrecognized critical extension. The anchor's own signature is not checked: it is trusted by being supplied. Names are compared byte-for-byte; revocation (CRL/OCSP), name constraints and policies are not processed, and the leaf's key usage is left to the caller.
 

@@ -49,7 +49,9 @@
 #include <sha.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -302,6 +304,126 @@ namespace {
 		return {};
 	}
 
+	constexpr std::size_t MaxDnsName = 253;		///< Longest accepted host name in bytes, without trailing dot.
+	constexpr std::size_t MaxDnsLabel = 63;		///< Longest accepted host name label in bytes.
+
+	/**
+	 * @brief Tells whether a byte is an ASCII letter, digit or hyphen.
+	 * @param c Byte to test.
+	 * @return true for a letter-digit-hyphen byte.
+	 */
+	bool IsLdh(char c) noexcept {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
+	}
+
+	/**
+	 * @brief Checks a host name label: 1..63 letters, digits or hyphens, no edge hyphen.
+	 * @param label Candidate label without dots.
+	 * @return true when the label is acceptable.
+	 */
+	bool IsDnsLabel(std::string_view label) noexcept {
+		return !label.empty() && label.size() <= MaxDnsLabel && label.front() != '-' && label.back() != '-'
+			&& std::ranges::all_of(label, IsLdh);
+	}
+
+	/**
+	 * @brief Validates a host name and returns it lowercased in @p canonical.
+	 * @param name Candidate ASCII name without a trailing dot; may contain NUL or non-ASCII bytes.
+	 * @param wildcard Whether a complete leftmost `*` label over two or more labels is allowed.
+	 * @param canonical Receives the lowercased name on success.
+	 * @return true when the name is acceptable.
+	 * @throws std::bad_alloc @p canonical cannot grow.
+	 */
+	bool CanonicalDnsName(std::string_view name, bool wildcard, std::string& canonical) {
+		if (name.empty() || name.size() > MaxDnsName)
+			return false;
+		std::size_t labels = 0;
+		std::string_view last;
+		std::size_t begin = 0;
+		while (true) {
+			const std::size_t dot = name.find('.', begin);
+			const std::string_view label = name.substr(begin, dot == std::string_view::npos ? dot : dot - begin);
+			const bool star = wildcard && labels == 0 && label == "*" && dot != std::string_view::npos;
+			if (!star && !IsDnsLabel(label))
+				return false;
+			++labels;
+			last = label;
+			if (dot == std::string_view::npos)
+				break;
+			begin = dot + 1;
+		}
+		if (wildcard && name.front() == '*' && labels < 3)
+			return false;
+		if (std::ranges::all_of(last, [](char c) { return c >= '0' && c <= '9'; }))
+			return false;
+		canonical.assign(name);
+		for (char& c : canonical)
+			if (c >= 'A' && c <= 'Z')
+				c = static_cast<char>(c - 'A' + 'a');
+		return true;
+	}
+
+	/**
+	 * @brief Tells whether the canonical @p pattern, wildcard included, matches the canonical @p host.
+	 * @param pattern Validated lowercase SAN name, possibly starting with `*.`.
+	 * @param host Validated lowercase expected host name without wildcard.
+	 * @return true when the names match in full, a wildcard standing for exactly one label.
+	 */
+	bool DnsMatches(const std::string& pattern, const std::string& host) noexcept {
+		if (pattern.front() != '*')
+			return pattern == host;
+		const std::size_t dot = host.find('.');
+		return dot != std::string::npos && dot > 0 && host.compare(dot, std::string::npos, pattern, 1, std::string::npos) == 0;
+	}
+
+	/**
+	 * @brief Strictly decodes a subjectAltName extnValue into its DNS and IP entries.
+	 * @param data Complete certificate DER.
+	 * @param offset First byte of the extnValue contents inside @p data.
+	 * @param length Byte count of the extnValue contents.
+	 * @return Supported entries in order, or MalformedSubjectAltName for any structural defect.
+	 * @throws StormByte::Safe::AllocationError Entry or error storage cannot be allocated.
+	 */
+	StormByte::Expected<StormByte::Safe::Vector<SubjectAltName>, IdentityError> DecodeSubjectAltNames(Bytes data,
+		std::size_t offset, std::size_t length) {
+		constexpr std::uint8_t TagDns = 0x82;
+		constexpr std::uint8_t TagIp = 0x87;
+		const auto malformed = [] { return StormByte::Unexpected<IdentityError>(IdentityError::MalformedSubjectAltName); };
+		Reader holder(data, offset, offset + length);
+		Element names;
+		if (!holder.Next(TagSequence, names) || !holder.AtEnd() || names.length == 0)
+			return malformed();
+		Reader reader(data, names);
+		Safe::Vector<SubjectAltName> result;
+		while (!reader.AtEnd()) {
+			Element name;
+			if (!reader.Next(name) || name.length == 0)
+				return malformed();
+			const Bytes value = Contents(data, name);
+			switch (name.tag) {
+				case TagDns: {
+					const std::string_view text(reinterpret_cast<const char*>(value.data()), value.size());
+					std::string canonical;
+					if (!CanonicalDnsName(text, true, canonical))
+						return malformed();
+					result.push_back(SubjectAltName(SubjectAltNameType::DNS, Safe::Binary(value)));
+					break;
+				}
+				case TagIp:
+					if (value.size() != 4 && value.size() != 16)
+						return malformed();
+					result.push_back(SubjectAltName(SubjectAltNameType::IP, Safe::Binary(value)));
+					break;
+				// otherName, rfc822Name, x400Address, directoryName, ediPartyName, URI and registeredID
+				case 0xA0: case 0x81: case 0xA3: case 0xA4: case 0xA5: case 0x86: case 0x88:
+					break;
+				default:
+					return malformed();
+			}
+		}
+		return result;
+	}
+
 	template<typename Hash>
 	bool VerifyEcdsa(Bytes public_key, Bytes message, Bytes signature) {
 		typename CryptoPP::ECDSA<CryptoPP::ECP, Hash>::PublicKey key;
@@ -408,6 +530,28 @@ namespace {
 		const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
 		return text.find("-----BEGIN") != std::string_view::npos;
 	}
+}
+
+SubjectAltName::SubjectAltName() noexcept: m_type(SubjectAltNameType::DNS) {}
+
+SubjectAltName::SubjectAltName(SubjectAltNameType type, Safe::Binary value): m_type(type), m_value(std::move(value)) {}
+
+SubjectAltName::SubjectAltName(const SubjectAltName& other) = default;
+
+SubjectAltName::SubjectAltName(SubjectAltName&& other) noexcept = default;
+
+SubjectAltName::~SubjectAltName() noexcept = default;
+
+SubjectAltName& SubjectAltName::operator=(const SubjectAltName& other) = default;
+
+SubjectAltName& SubjectAltName::operator=(SubjectAltName&& other) noexcept = default;
+
+SubjectAltNameType SubjectAltName::Type() const noexcept {
+	return m_type;
+}
+
+const Safe::Binary& SubjectAltName::Value() const noexcept {
+	return m_value;
 }
 
 Certificate::Certificate() noexcept = default;
@@ -571,6 +715,10 @@ bool Certificate::Parse(std::span<const std::byte> der, Certificate& out) noexce
 					result.m_key_usage = mask;
 					result.m_has_key_usage = true;
 				}
+				else if (Equals(id, OidSubjectAltName)) {
+					result.m_subject_alt_name = Range{value.value, value.length};
+					result.m_has_subject_alt_name = true;
+				}
 				else if (critical && !Equals(id, OidExtendedKeyUsage) && !Equals(id, OidSubjectKeyId)
 					&& !Equals(id, OidAuthorityKeyId) && !Equals(id, OidSubjectAltName))
 					result.m_unknown_critical = true;
@@ -687,6 +835,45 @@ StormByte::Crypto::KeyPair::Generic::PointerType Certificate::PublicKey() const 
 	} catch (...) {
 		return nullptr;
 	}
+}
+
+ExpectedSubjectAltNames Certificate::SubjectAltNames() const {
+	if (!m_has_subject_alt_name)
+		return StormByte::Unexpected<IdentityError>(IdentityError::MissingSubjectAltName);
+	return DecodeSubjectAltNames(m_der.span(), m_subject_alt_name.offset, m_subject_alt_name.length);
+}
+
+ExpectedIdentity Certificate::VerifyDNSName(std::string_view expected) const {
+	if (expected.size() > 1 && expected.back() == '.')
+		expected.remove_suffix(1);
+	std::string host;
+	if (!CanonicalDnsName(expected, false, host))
+		return StormByte::Unexpected<IdentityError>(IdentityError::InvalidExpectedName);
+	const auto names = SubjectAltNames();
+	if (!names)
+		return StormByte::Unexpected(names.error());
+	for (const SubjectAltName& name : *names) {
+		if (name.Type() != SubjectAltNameType::DNS)
+			continue;
+		const Bytes value = name.Value().span();
+		std::string pattern;
+		if (CanonicalDnsName(std::string_view(reinterpret_cast<const char*>(value.data()), value.size()), true, pattern)
+			&& DnsMatches(pattern, host))
+			return {};
+	}
+	return StormByte::Unexpected<IdentityError>(IdentityError::NoMatch);
+}
+
+ExpectedIdentity Certificate::VerifyIPAddress(std::span<const std::byte> expected) const {
+	if (expected.size() != 4 && expected.size() != 16)
+		return StormByte::Unexpected<IdentityError>(IdentityError::InvalidExpectedAddress);
+	const auto names = SubjectAltNames();
+	if (!names)
+		return StormByte::Unexpected(names.error());
+	for (const SubjectAltName& name : *names)
+		if (name.Type() == SubjectAltNameType::IP && std::ranges::equal(name.Value().span(), expected))
+			return {};
+	return StormByte::Unexpected<IdentityError>(IdentityError::NoMatch);
 }
 
 bool Certificate::IsValidAt(TimePoint at) const noexcept {
