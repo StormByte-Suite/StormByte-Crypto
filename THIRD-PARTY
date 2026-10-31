@@ -39,7 +39,7 @@ Pinned certdata SHA-256:
 Extracted public server-root PEM SHA-256 (117 admitted roots):
   605910d60aa2dedf70cca0d048c17b60f6edb3931f8471dde17822b4df49b5a3
 
-The release builds compile both libraries below into libStormByte-Crypto.
+The release builds compile all libraries below into libStormByte-Crypto.
 They are not installed as libraries of their own. A build configured with
 WITH_CRYPTOPP=SYSTEM or WITH_BZIP2=SYSTEM does not contain that library,
 and this notice does not describe that configuration.
@@ -94,6 +94,19 @@ and this notice does not describe that configuration.
   That license asks that the origin of the software not be misrepresented
   and that Julian Seward's name not be used to endorse a product. The
   acknowledgment above is the one this distribution gives.
+
+3. OpenSSL 3.5.9
+
+  What it is     the TLS 1.3 protocol and cryptographic backend for TLS sessions
+  How it is used libssl and libcrypto are compiled statically into
+                 libStormByte-Crypto. OpenSSL types and symbols are not part of
+                 the public API or exported shared-library interface.
+  Source         https://github.com/openssl/openssl/tree/45e844fa2a14ec92d146bd8f5778ac130b6625fb
+  Build port     https://github.com/jimmy-park/openssl-cmake/tree/609348769bb4e9d1fd72a0b12cb099deb13597aa
+  Configuration  pinned static build; applications, SSLv3, compression and
+                 upstream tests are disabled
+  License        Apache License 2.0, copied verbatim from the source
+                 LICENSE.txt as COPYING.OpenSSL
 
 Linked at run time, not compiled in
 ------------------------------------

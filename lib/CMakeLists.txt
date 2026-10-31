@@ -34,6 +34,17 @@ set_target_properties(StormByte-Crypto PROPERTIES
 	VISIBILITY_INLINES_HIDDEN ON
 )
 
+if(BUILD_SHARED_LIBS AND APPLE)
+	target_link_options(StormByte-Crypto PRIVATE
+		"LINKER:-hidden-lssl"
+		"LINKER:-hidden-lcrypto"
+	)
+elseif(BUILD_SHARED_LIBS AND UNIX)
+	target_link_options(StormByte-Crypto PRIVATE
+		"LINKER:--exclude-libs,libssl.a:libcrypto.a"
+	)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 	target_compile_options(StormByte-Crypto PRIVATE
 		/EHsc

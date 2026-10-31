@@ -56,12 +56,12 @@
 namespace StormByte {
 	/**
 	 * @namespace StormByte::Crypto
-	 * @brief Cryptographic primitives and planned protocol policy.
+	 * @brief Cryptographic primitives and TLS 1.3 protocol implementation.
 	 */
 	namespace Crypto {
 		/**
 		 * @namespace StormByte::Crypto::TLS
-		 * @brief TLS policy groundwork, not an implemented TLS engine.
+		 * @brief TLS 1.3 policy and buffer-driven session engine.
 		 */
 		namespace TLS {
 			/**
@@ -74,7 +74,7 @@ namespace StormByte {
 
 			/**
 			 * @enum CipherSuite
-			 * @brief Registered TLS 1.3 suites; cipher and transcript hash are inseparable.
+			 * @brief TLS 1.3 suites supported by the buffer-driven session engine.
 			 */
 			enum class CipherSuite: std::uint16_t {
 				TLS_AES_128_GCM_SHA256 = 0x1301,	///< AES-128-GCM with SHA-256 transcript and HKDF.
@@ -83,7 +83,7 @@ namespace StormByte {
 
 			/**
 			 * @enum Group
-			 * @brief Named groups designated for the initial planned profile.
+			 * @brief Named groups supported by the initial TLS 1.3 profile.
 			 */
 			enum class Group: std::uint16_t {
 				X25519 = 0x001d,	///< Curve25519 key agreement.
@@ -92,10 +92,11 @@ namespace StormByte {
 
 			/**
 			 * @enum SignatureScheme
-			 * @brief Signature schemes designated for the initial planned profile.
+			 * @brief TLS 1.3 signature schemes supported by the session engine.
 			 */
 			enum class SignatureScheme: std::uint16_t {
-				ECDSA_SECP256R1_SHA256 = 0x0403	///< P-256 ECDSA/SHA-256; TLS DER adaptation remains pending.
+				ECDSA_SECP256R1_SHA256 = 0x0403,	///< P-256 ECDSA/SHA-256.
+				RSA_PSS_RSAE_SHA256 = 0x0804	///< RSA-PSS/SHA-256 with an rsaEncryption certificate key.
 			};
 
 			/**
@@ -111,7 +112,7 @@ namespace StormByte {
 				UnsupportedGroup,	///< A group is outside the designated initial profile.
 				DuplicateGroup,	///< A group appears more than once.
 				EmptySignatureSchemes,	///< No allowed signature scheme was specified.
-				UnsupportedSignatureScheme,	///< A scheme is outside the designated initial profile.
+				UnsupportedSignatureScheme,	///< A scheme is outside the supported TLS 1.3 profile.
 				DuplicateSignatureScheme	///< A scheme appears more than once.
 			};
 
@@ -119,14 +120,14 @@ namespace StormByte {
 			 * @struct Configuration
 			 * @brief Mutable input with independent ordered preference lists.
 			 *
-			 * Defaults designate the entire initial planned profile, preferred entries
-			 * first (not a security-strength ranking or claim of TLS availability).
+			 * Defaults contain the complete supported profile, preferred entries
+			 * first (not a security-strength ranking).
 			 * Subsets and reordering are permitted; validation neither sorts nor inserts
 			 * fallbacks. Construction and copying can throw Base allocation errors.
 			 */
 			struct Configuration {
 				/**
-				 * @brief Construct the mutable default planned profile.
+				 * @brief Construct the mutable default TLS 1.3 profile.
 				 * @throws StormByte::Safe::AllocationError Preference storage cannot be allocated.
 				 */
 				Configuration() = default;
@@ -182,13 +183,13 @@ namespace StormByte {
 				 * @brief Allowed signature schemes in descending preference order.
 				 */
 				StormByte::Safe::Vector<SignatureScheme> signature_schemes{
-					SignatureScheme::ECDSA_SECP256R1_SHA256
+					SignatureScheme::ECDSA_SECP256R1_SHA256, SignatureScheme::RSA_PSS_RSAE_SHA256
 				};
 			};
 
 			/**
 			 * @struct CipherSuiteDefinition
-			 * @brief Fixed primitive mapping, not a TLS implementation or selectable pair.
+			 * @brief Fixed primitive mapping, not an independently selectable pair.
 			 */
 			struct CipherSuiteDefinition {
 				AEAD::Algorithm aead;	///< Raw-key authenticated encryption primitive.
@@ -209,12 +210,12 @@ STORMBYTE_DECLARE_MAYBE_SAFE(StormByte::Crypto::TLS::CipherSuiteDefinition);
 namespace StormByte {
 	/**
 	 * @namespace StormByte::Crypto
-	 * @brief Cryptographic primitives and planned protocol policy.
+	 * @brief Cryptographic primitives and TLS 1.3 protocol implementation.
 	 */
 	namespace Crypto {
 		/**
 		 * @namespace StormByte::Crypto::TLS
-		 * @brief TLS policy groundwork, not an implemented TLS engine.
+		 * @brief TLS policy and buffer-driven session implementation.
 		 */
 		namespace TLS {
 			/**
@@ -238,7 +239,7 @@ namespace StormByte {
 			 * @return Immutable owned snapshot or first typed error.
 			 * @throws StormByte::Safe::AllocationError Profile, snapshot or error storage cannot be allocated.
 			 * @note Validation order is version, suites, groups, signatures; within a list,
-			 *       left to right. Success does NOT mean a TLS connection can be established.
+			 *       left to right. A valid configuration is used by the TLS session engine.
 			 *       Allocation exceptions propagate; borrowed input is not retained.
 			 */
 			STORMBYTE_CRYPTO_PUBLIC ExpectedPolicy Validate(const Configuration& configuration);
@@ -247,7 +248,7 @@ namespace StormByte {
 			 * @brief All designated initial-profile entries in default preference order.
 			 * @return Independently owned lists of every designated profile entry.
 			 * @throws StormByte::Safe::AllocationError Preference storage cannot be allocated.
-			 * @note This is planned policy vocabulary, NOT available TLS algorithms.
+			 * @note This is the default TLS 1.3 policy profile.
 			 *       Each call returns independently owned mutable Safe containers.
 			 */
 			STORMBYTE_CRYPTO_PUBLIC Configuration InitialProfile();
@@ -262,7 +263,7 @@ namespace StormByte {
 
 			/**
 			 * @class Policy
-			 * @brief Immutable validated policy snapshot for a future transport consumer.
+			 * @brief Immutable validated TLS 1.3 policy snapshot.
 			 *
 			 * Safe::Shared stores a const Configuration on Base's heap; the factory copies
 			 * caller preferences. Copies and moves share immutable storage; moves preserve
@@ -271,12 +272,13 @@ namespace StormByte {
 			 * Preferences() must not outlive their snapshot. Keep compatible Crypto/Base
 			 * providers loaded while any Policy or returned Safe value exists.
 			 *
-			 * No sockets, negotiation, records, certificates or handshake are implemented.
+			 * The policy is consumed by the buffer-driven TLS session; it does not
+			 * configure network transports.
 			 */
 			class STORMBYTE_CRYPTO_PUBLIC Policy final {
 				public:
 					/**
-					 * @brief Construct the validated default planned profile.
+					 * @brief Construct the validated default TLS 1.3 profile.
 					 * @throws StormByte::Safe::AllocationError Snapshot or preference storage cannot be allocated.
 					 */
 					Policy();
