@@ -102,7 +102,7 @@ int test_public_isolated_path() {
 	const auto roots = LoadBundledTLSRoots();
 	ASSERT_TRUE(static_cast<bool>(roots));
 	const TimePoint at = std::chrono::sys_days(std::chrono::year(2026) / 10 / 31);
-	ASSERT_TRUE(Detail::NativeTrustPathForTest(leaf, chain, roots->span(), at, roots->span()));
+	ASSERT_TRUE(Detail::NativeTrustPathForTest(leaf, chain, *roots, at, *roots));
 	RETURN_TEST(0);
 }
 
