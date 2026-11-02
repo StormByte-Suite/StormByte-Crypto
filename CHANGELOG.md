@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.2) 2.2.2, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.5, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.5 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.2. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.3) 2.2.3, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.6, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.6 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.3. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
 Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, X509, Random, Password, Vault and TLS sessions. Crypto++ and OpenSSL remain private backends; installed headers expose neither library's types.
 
@@ -20,11 +20,19 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.1...HEAD
+
+## [2.3.1] - 2026-11-02
+
+### Changed
+
+- Update published StormByte Suite dependencies to Base 2.2.3, Logger 2.0.6, System 2.1.3 and Buffer 2.0.6.
+
 ### Fixed
 
 - TLS clients using `TrustSource::Bundled` (the default) now load the embedded Mozilla roots into the OpenSSL verification store. Previously the roots were only kept for the post-verification path check, so OpenSSL could never build a chain and every handshake against a public server failed with `SessionError::PeerRejected`.
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.0...HEAD
+[2.3.1]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.0...2.3.1
 
 ## [2.3.0] - 2026-10-31
 
