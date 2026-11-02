@@ -27,6 +27,7 @@ If you landed here from a release link and have not read the tree:
 ### Changed
 
 - Update published StormByte Suite dependencies to Base 2.2.3, Logger 2.0.6, System 2.1.3 and Buffer 2.0.6.
+- Rebuild release packages against the refreshed Base, Logger, System and Buffer releases, including their final audit fixes.
 
 ### Fixed
 
