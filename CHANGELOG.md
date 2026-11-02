@@ -18,6 +18,14 @@ If you landed here from a release link and have not read the tree:
 - What this module is, how to build it, and short examples: [README.md](https://github.com/StormByte-Suite/StormByte-Crypto/blob/master/README.md)
 - License: GNU Lesser General Public License version 3 or later, [LICENSE](https://github.com/StormByte-Suite/StormByte-Crypto/blob/master/LICENSE)
 
+## [Unreleased]
+
+### Fixed
+
+- TLS clients using `TrustSource::Bundled` (the default) now load the embedded Mozilla roots into the OpenSSL verification store. Previously the roots were only kept for the post-verification path check, so OpenSSL could never build a chain and every handshake against a public server failed with `SessionError::PeerRejected`.
+
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.0...HEAD
+
 ## [2.3.0] - 2026-10-31
 
 ### Added

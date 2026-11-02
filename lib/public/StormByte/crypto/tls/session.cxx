@@ -486,6 +486,11 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 			auto roots = CryptoX509::LoadBundledTLSRoots();
 			if (!roots)
 				return Fail(SessionError::InvalidConfiguration);
+			for (const auto& root : *roots)
+				if (!AddTrustAnchor(context, root)) {
+					ERR_clear_error();
+					return Fail(SessionError::InvalidConfiguration);
+				}
 			anchors.assign(roots->begin(), roots->end());
 		} else if (trust_source == TrustSource::Custom) {
 			if (!AddTrustAnchors(context, configuration.trust_anchors))
