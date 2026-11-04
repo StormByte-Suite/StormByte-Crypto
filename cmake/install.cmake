@@ -9,4 +9,7 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/public/StormByte/"
 	PATTERN "*.h"
 	PATTERN "*.hxx"
 )
+install(FILES "${CMAKE_SOURCE_DIR}/cmake/FindStormByteCrypto.cmake"
+	DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/cmake/Modules"
+)
 install(FILES "${CMAKE_SOURCE_DIR}/COPYING.MPL2" DESTINATION ".")

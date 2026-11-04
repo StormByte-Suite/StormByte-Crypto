@@ -9,7 +9,7 @@
 
 This repository is **StormByte Crypto**: hash, compress, encrypt, sign and key agreement for the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.3) 2.2.3, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.6, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.6 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.3. Public headers live under `StormByte/crypto/`. Crypto++ and OpenSSL are private implementation dependencies: installed headers expose neither library's types. Bundled builds link them statically; `WITH_OPENSSL=SYSTEM` uses installed OpenSSL shared libraries.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 3.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Public headers live under `StormByte/crypto/`. Crypto++ and OpenSSL are private implementation dependencies: installed headers expose neither library's types. Bundled builds link them statically; `WITH_OPENSSL=SYSTEM` uses installed OpenSSL shared libraries.
 
 The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedia, Network and System are **other repositories**. This one does not implement them.
 
@@ -70,7 +70,7 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 ## Installation
 
-Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.3, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.3) 2.2.3, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.6, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.6 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.3. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL and libbzip2 are build dependencies. `WITH_OPENSSL=BUNDLED` (default) builds pinned OpenSSL 3.5.9 and its pinned CMake port statically into Crypto. `WITH_OPENSSL=SYSTEM` requires OpenSSL 3.0+ development files and links the installed shared libraries. Windows forces `BUNDLED`, matching StormByte-Database. OpenSSL is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
+Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.5, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 3.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL and libbzip2 are build dependencies. `WITH_OPENSSL=BUNDLED` (default) builds pinned OpenSSL 3.5.9 and its pinned CMake port statically into Crypto. `WITH_OPENSSL=SYSTEM` requires OpenSSL 3.0+ development files and links the installed shared libraries. Windows forces `BUNDLED`, matching StormByte-Database. OpenSSL is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
 
 ```sh
 git clone --recursive https://github.com/StormByte-Suite/StormByte-Crypto.git
@@ -94,7 +94,16 @@ Shared vs static follows CMake `BUILD_SHARED_LIBS` (declared in `lib/`, default 
 
 A shared build keeps this library as its own `.so` / `.dll`. Under the LGPL that is usually the simpler way to ship: the user can replace that file. A static archive is folded into your binary. The LGPL still applies to this code; you must give the recipient a way to relink your product with a different build of this library. If that does not fit how you distribute the final product, a commercial license is available from the copyright holder (see [License](#license)).
 
-Link `StormByte-Crypto` (and Buffer / System / Base). Base supplies the Safe text and binary types; there is no separate String dependency. Include path: the public install prefix, headers as `#include <StormByte/crypto/….hxx>`.
+For installed Base, Logger, System, Buffer and Crypto prefixes, add each prefix's
+`share/cmake/Modules` directory to `CMAKE_MODULE_PATH` and the prefixes to
+`CMAKE_PREFIX_PATH`, then use the component finder:
+
+```cmake
+find_package(StormByte REQUIRED COMPONENTS Base Crypto)
+target_link_libraries(app PRIVATE StormByte::Crypto)
+```
+
+The Crypto finder is installed in `share/cmake/Modules` and discovers Buffer, Logger and System as dependencies. You can also link `StormByte-Crypto` (and Buffer / System / Base). Base supplies the Safe text and binary types; there is no separate String dependency. Include path: the public install prefix, headers as `#include <StormByte/crypto/….hxx>`.
 
 ## Usage
 

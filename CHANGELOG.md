@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.3) 2.2.3, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 2.0.6, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 2.0.6 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 2.1.3. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 3.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
 Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, X509, Random, Password, Vault and TLS sessions. Crypto++ and OpenSSL remain private backends; installed headers expose neither library's types.
 
@@ -20,7 +20,29 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.1...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.0...HEAD
+
+## [3.0.0] - 2026-11-04
+
+### Added
+
+- Install `FindStormByteCrypto.cmake` so Base 3.0.0 can discover Crypto with its Buffer, Logger and System dependencies. Verify consumers against an installed prefix and an extracted release ZIP.
+
+### Changed
+
+- **Breaking:** Require Base, Logger, System and Buffer 3.0.0 and BuildMaster 2.1.5.
+- Select dependency archives and publish Linux releases by architecture, libc and C++ standard library.
+- Build and test the Linux amd64/arm64, glibc/musl, and GCC/libstdc++ or Clang/libc++ variants.
+- Compile the bundled Crypto++ ARMv8 SIMD sources with the per-file ISA flags upstream uses, enabling the CRC32, AES, PMULL and SHA hardware paths on Linux ARM64.
+
+### Fixed
+
+- Detect ARM64 CPU features through `getauxval()` on musl. The bundled Crypto++ only queried it with glibc, so Alpine builds never selected PMULL.
+- Use the correct `:` separator when combining PGO runtime library paths, preserving inherited paths on musl.
+- Reconfigure automatically when `VERSION` changes.
+- Preserve compiler optimization defaults in manual Release builds; CPU selection comes from the toolchain and `ENABLE_LTO` remains independently configurable.
+
+[3.0.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/2.3.1...3.0.0
 
 ## [2.3.1] - 2026-11-02
 

@@ -13,7 +13,7 @@ source. That source is the Git tag of the release that contains this
 archive. The release page that hosts the zip also hosts the source archives
 GitHub generates for that tag:
 
-  https://github.com/StormByte-Suite/StormByte-Crypto/releases/tag/2.3.1
+  https://github.com/StormByte-Suite/StormByte-Crypto/releases/tag/3.0.0
 
 Rebuilding that tag produces a replacement shared library (libStormByte-Crypto).
 Substituting that shared library is the relink method provided with this
@@ -118,10 +118,10 @@ These are other shared libraries. They are not inside this file. SDS, in
 particular, is compiled into StormByte Base, not into StormByte-Crypto.
 Each library has its own release archive and its own THIRD-PARTY.
 
-  - StormByte Base 2.2.3 — https://github.com/StormByte-Suite/StormByte/releases/tag/2.2.3
-  - StormByte-Buffer 2.0.6 — https://github.com/StormByte-Suite/StormByte-Buffer/releases/tag/2.0.6
-  - StormByte-Logger 2.0.6 — https://github.com/StormByte-Suite/StormByte-Logger/releases/tag/2.0.6
-  - StormByte System 2.1.3 — https://github.com/StormByte-Suite/StormByte-System/releases/tag/2.1.3
+  - StormByte Base 3.0.0 — https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0
+  - StormByte-Buffer 3.0.0 — https://github.com/StormByte-Suite/StormByte-Buffer/releases/tag/3.0.0
+  - StormByte-Logger 3.0.0 — https://github.com/StormByte-Suite/StormByte-Logger/releases/tag/3.0.0
+  - StormByte System 3.0.0 — https://github.com/StormByte-Suite/StormByte-System/releases/tag/3.0.0
 
 A static rebuild can fold those libraries, and anything they themselves
 embed, into one binary. That binary is a different distribution from this
