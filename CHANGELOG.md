@@ -27,6 +27,7 @@ If you landed here from a release link and have not read the tree:
 ### Added
 
 - Install `FindStormByteCrypto.cmake` so Base 3.0.0 can discover Crypto with its Buffer, Logger and System dependencies. Verify consumers against an installed prefix and an extracted release ZIP.
+- Add X.509 APIs to require an explicit code-signing EKU (and digital-signature key usage when present), match a unique subject common name, and verify DER-encoded detached ECDSA/SHA-384 signatures. Callers must still validate the certificate chain and validity separately.
 
 ### Changed
 

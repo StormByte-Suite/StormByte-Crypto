@@ -44,6 +44,7 @@
 
 #include "purpose_fixtures.hxx"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <iostream>
@@ -80,6 +81,31 @@ namespace {
 	 */
 	bool Fails(const ExpectedPurpose& result, PurposeError error) {
 		return !result && *result.error() == error;
+	}
+
+	Certificate CodeSigningFixture(std::string_view pem, bool remove_signing_usage = false) {
+		auto der = Cert(pem).Der();
+		constexpr std::array server_oid{
+			std::byte{0x06}, std::byte{0x08}, std::byte{0x2b}, std::byte{0x06}, std::byte{0x01},
+			std::byte{0x05}, std::byte{0x05}, std::byte{0x07}, std::byte{0x03}, std::byte{0x01}
+		};
+		auto bytes = der.span();
+		auto oid = std::search(bytes.begin(), bytes.end(), server_oid.begin(), server_oid.end());
+		if (oid == bytes.end() || std::search(oid + server_oid.size(), bytes.end(), server_oid.begin(),
+			server_oid.end()) != bytes.end())
+			throw std::runtime_error("expected exactly one serverAuth fixture OID");
+		*(oid + server_oid.size() - 1) = std::byte{0x03};
+		if (remove_signing_usage) {
+			constexpr std::array usage{std::byte{0x03}, std::byte{0x02}, std::byte{0x05}, std::byte{0xa0}};
+			auto bit_string = std::search(bytes.begin(), bytes.end(), usage.begin(), usage.end());
+			if (bit_string == bytes.end())
+				throw std::runtime_error("expected signing key usage in fixture");
+			*(bit_string + usage.size() - 1) = std::byte{0x20};
+		}
+		auto result = X509::Load(der.span());
+		if (!result)
+			throw std::runtime_error("modified purpose fixture failed to load");
+		return *result;
 	}
 }
 
@@ -269,6 +295,24 @@ int test_purpose_is_not_authentication() {
 	RETURN_TEST(0);
 }
 
+int test_code_signing_purpose() {
+	for (const auto pem : {EC_Server, EC_BothCritical, EC_SignEncipher})
+		ASSERT_TRUE(static_cast<bool>(CodeSigningFixture(pem).VerifyCodeSigningPurpose()));
+	for (const auto pem : {EC_Absent, EC_Sign, EC_Server, EC_Client, EC_Any})
+		ASSERT_TRUE(Fails(Cert(pem).VerifyCodeSigningPurpose(), PurposeError::ExtendedKeyUsageNotAllowed));
+	for (const auto pem : {EC_Empty, EC_BadEKUDeniedKU})
+		ASSERT_TRUE(Fails(Cert(pem).VerifyCodeSigningPurpose(), PurposeError::MalformedExtendedKeyUsage));
+	for (const auto pem : {EC_BadHead, EC_BadCritical})
+		ASSERT_TRUE(Fails(CodeSigningFixture(pem).VerifyCodeSigningPurpose(),
+			PurposeError::MalformedExtendedKeyUsage));
+	ASSERT_TRUE(Fails(CodeSigningFixture(EC_SignEncipher, true).VerifyCodeSigningPurpose(),
+		PurposeError::KeyUsageNotAllowed));
+	ASSERT_TRUE(Fails(Cert(EC_DeniedEKUBadKU).VerifyCodeSigningPurpose(), PurposeError::MalformedKeyUsage));
+	ASSERT_TRUE(Fails(Certificate{}.VerifyCodeSigningPurpose(), PurposeError::InvalidCertificate));
+	ASSERT_FALSE(CodeSigningFixture(EC_Server).VerifyChain({}, Cert(EC_Server)));
+	RETURN_TEST(0);
+}
+
 /**
  * @brief Runs independent purpose-validation regression tests.
  * @return Zero on success, nonzero on a failed assertion or exception.
@@ -286,11 +330,12 @@ int main() {
 		result += test_invalid_role_and_empty_certificate();
 		result += test_safe_lifecycle();
 		result += test_purpose_is_not_authentication();
+		result += test_code_signing_purpose();
 	} catch (const std::exception& error) {
 		std::cerr << "Unexpected exception: " << error.what() << std::endl;
 		return 1;
 	}
 	if (result == 0)
-		std::cout << "All 10 purpose tests passed!" << std::endl;
+		std::cout << "All 11 purpose tests passed!" << std::endl;
 	return result;
 }

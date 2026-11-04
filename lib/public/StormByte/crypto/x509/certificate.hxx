@@ -122,20 +122,28 @@ namespace StormByte {
 			};
 
 			/**
+			 * @enum DetachedSignatureAlgorithm
+			 * @brief Supported algorithms and encodings for detached signatures.
+			 */
+			enum class DetachedSignatureAlgorithm {
+				ECDSA_SHA384	///< ECDSA with SHA-384, encoded as a DER SEQUENCE of INTEGERs.
+			};
+
+			/**
 			 * @enum PurposeError
-			 * @brief Errors of the narrowly scoped TLS certificate-purpose check.
+			 * @brief Errors of narrowly scoped certificate-purpose checks.
 			 */
 			enum class PurposeError {
 				UnsupportedRole,			///< Role is not Server or Client.
 				InvalidCertificate,			///< Certificate is empty or moved from.
 				MalformedExtendedKeyUsage,	///< EKU is not a non-empty strict DER sequence of valid OIDs.
-				ExtendedKeyUsageNotAllowed,	///< Present EKU lacks the explicit role-specific purpose.
+				ExtendedKeyUsageNotAllowed,	///< EKU does not permit the requested purpose.
 				MalformedKeyUsage,			///< Present KU violates DER named-bit-string encoding or its 1..9-bit range.
 				KeyUsageNotAllowed			///< Present KU lacks digitalSignature.
 			};
 
 			/**
-			 * @brief Success when certificate usage permits a TLS role, or a typed error.
+			 * @brief Success when certificate usage permits a purpose, or a typed error.
 			 */
 			using ExpectedPurpose = StormByte::Expected<void, PurposeError>;
 
@@ -350,6 +358,14 @@ namespace StormByte {
 					Safe::String SubjectCommonName() const;
 
 					/**
+					 * @brief Matches exactly one subject CN against a byte-exact identity.
+					 * @param expected Nonempty expected common name.
+					 * @return false for a missing, repeated, malformed or different CN.
+					 * @note This does not verify the certificate's chain, validity or purpose.
+					 */
+					bool HasUniqueSubjectCommonName(std::string_view expected) const noexcept;
+
+					/**
 					 * @brief Returns the issuer common name.
 					 * @return First CN attribute, or empty when absent or not a string type.
 					 */
@@ -463,6 +479,34 @@ namespace StormByte {
 					 *       CA flags are not checked; identity verification remains separate.
 					 */
 					ExpectedPurpose VerifyTLSPurpose(TLSRole role) const;
+
+					/**
+					 * @brief Checks only EKU and KU for code signing.
+					 * @return Success when usage permits code signing, or a PurposeError.
+					 * @throws StormByte::Safe::AllocationError Error storage cannot be allocated.
+					 *
+					 * EKU must be present and explicitly contain codeSigning
+					 * (1.3.6.1.5.5.7.3.3); anyExtendedKeyUsage is insufficient.
+					 * If KU is present, it must be strict DER and include digitalSignature.
+					 * Errors are checked in order: empty certificate, malformed EKU,
+					 * malformed KU, denied EKU, denied KU.
+					 * @note This does not authenticate the certificate, validate its chain
+					 *       or validity, classify it as a leaf, check critical extensions,
+					 *       or verify its identity or a signature. Those checks are separate.
+					 */
+					ExpectedPurpose VerifyCodeSigningPurpose() const;
+
+					/**
+					 * @brief Verifies a detached signature with this certificate's public key.
+					 * @param algorithm Required signature algorithm and encoding.
+					 * @param message Exact signed bytes.
+					 * @param signature Detached signature bytes.
+					 * @return true only if the supported algorithm and public key verify the signature.
+					 * @note This does not authenticate the certificate or check its chain, validity,
+					 *       identity, critical extensions, leaf status or permitted key usage.
+					 */
+					bool VerifyDetachedSignature(DetachedSignatureAlgorithm algorithm,
+						std::span<const std::byte> message, std::span<const std::byte> signature) const noexcept;
 					/** @} */
 
 					/**

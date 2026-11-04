@@ -83,6 +83,7 @@ namespace {
 	constexpr std::uint8_t OidExtendedKeyUsage[] = {0x55, 0x1D, 0x25};
 	constexpr std::uint8_t OidServerAuth[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};	///< serverAuth OID contents.
 	constexpr std::uint8_t OidClientAuth[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02};	///< clientAuth OID contents.
+	constexpr std::uint8_t OidCodeSigning[] = {0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x03};
 	constexpr std::uint8_t OidSubjectKeyId[] = {0x55, 0x1D, 0x0E};
 	constexpr std::uint8_t OidAuthorityKeyId[] = {0x55, 0x1D, 0x23};
 	constexpr std::uint8_t OidSubjectAltName[] = {0x55, 0x1D, 0x11};
@@ -213,13 +214,14 @@ namespace {
 	}
 
 	/**
-	 * @brief Strictly validates the complete EKU value and records a role match.
+	 * @brief Strictly validates the complete EKU value and records a purpose match.
 	 * @param data EKU extnValue contents.
-	 * @param role Validated TLS role.
-	 * @param allowed Receives whether an explicit role OID occurs, on success.
+	 * @param required Required purpose OID contents.
+	 * @param allowed Receives whether the explicit purpose OID occurs, on success.
 	 * @return false for an empty sequence, malformed TLV/OID or trailing bytes.
 	 */
-	bool ReadTLSExtendedKeyUsage(Bytes data, TLSRole role, bool& allowed) noexcept {
+	template<std::size_t N>
+	bool ReadExtendedKeyUsage(Bytes data, const std::uint8_t (&required)[N], bool& allowed) noexcept {
 		Reader holder(data, 0, data.size());
 		Element sequence;
 		if (!holder.Next(TagSequence, sequence) || !holder.AtEnd() || sequence.length == 0)
@@ -231,9 +233,15 @@ namespace {
 			if (!entries.Next(TagOid, oid) || !IsValidOid(Contents(data, oid)))
 				return false;
 			const Bytes value = Contents(data, oid);
-			allowed |= role == TLSRole::Server ? Equals(value, OidServerAuth) : Equals(value, OidClientAuth);
+			allowed |= Equals(value, required);
 		}
 		return true;
+	}
+
+	bool ReadTLSExtendedKeyUsage(Bytes data, TLSRole role, bool& allowed) noexcept {
+		return role == TLSRole::Server
+			? ReadExtendedKeyUsage(data, OidServerAuth, allowed)
+			: ReadExtendedKeyUsage(data, OidClientAuth, allowed);
 	}
 
 	/**
@@ -241,7 +249,7 @@ namespace {
 	 * @param data KU extnValue contents.
 	 * @return true for 1..9 bits, zero padding, and a set final significant bit.
 	 */
-	bool IsValidTLSKeyUsage(Bytes data) noexcept {
+	bool IsValidKeyUsage(Bytes data) noexcept {
 		Reader holder(data, 0, data.size());
 		Element bits;
 		if (!holder.Next(TagBitString, bits) || !holder.AtEnd() || bits.length < 2 || bits.length > 3)
@@ -367,6 +375,43 @@ namespace {
 		return {};
 	}
 
+	bool UniqueCommonName(Bytes data, std::size_t offset, std::size_t length, std::string_view expected) noexcept {
+		if (expected.empty())
+			return false;
+		Reader name(data, offset, offset + length);
+		Element outer;
+		if (!name.Next(TagSequence, outer) || !name.AtEnd())
+			return false;
+		Reader rdns(data, outer);
+		bool found = false;
+		while (!rdns.AtEnd()) {
+			Element rdn;
+			if (!rdns.Next(TagSet, rdn))
+				return false;
+			Reader attributes(data, rdn);
+			if (attributes.AtEnd())
+				return false;
+			while (!attributes.AtEnd()) {
+				Element attribute;
+				if (!attributes.Next(TagSequence, attribute))
+					return false;
+				Reader pair(data, attribute);
+				Element type, value;
+				if (!pair.Next(TagOid, type) || !pair.Next(value) || !pair.AtEnd())
+					return false;
+				if (!Equals(Contents(data, type), OidCommonName))
+					continue;
+				if (found || (value.tag != 0x0C && value.tag != 0x13 && value.tag != 0x14 && value.tag != 0x16))
+					return false;
+				const Bytes text = Contents(data, value);
+				if (std::string_view(reinterpret_cast<const char*>(text.data()), text.size()) != expected)
+					return false;
+				found = true;
+			}
+		}
+		return found;
+	}
+
 	constexpr std::size_t MaxDnsName = 253;		///< Longest accepted host name in bytes, without trailing dot.
 	constexpr std::size_t MaxDnsLabel = 63;		///< Longest accepted host name label in bytes.
 
@@ -487,8 +532,27 @@ namespace {
 		return result;
 	}
 
+	bool IsValidEcdsaSignature(Bytes signature) noexcept {
+		Reader holder(signature, 0, signature.size());
+		Element sequence, r, s;
+		if (!holder.Next(TagSequence, sequence) || !holder.AtEnd())
+			return false;
+		Reader values(signature, sequence);
+		if (!values.Next(TagInteger, r) || !values.Next(TagInteger, s) || !values.AtEnd())
+			return false;
+		const auto valid_integer = [](Bytes value) {
+			return !value.empty()
+				&& (std::to_integer<unsigned>(value[0]) & 0x80) == 0
+				&& (value.size() == 1 || value[0] != std::byte{0}
+					|| (std::to_integer<unsigned>(value[1]) & 0x80) != 0);
+		};
+		return valid_integer(Contents(signature, r)) && valid_integer(Contents(signature, s));
+	}
+
 	template<typename Hash>
 	bool VerifyEcdsa(Bytes public_key, Bytes message, Bytes signature) {
+		if (!IsValidEcdsaSignature(signature))
+			return false;
 		typename CryptoPP::ECDSA<CryptoPP::ECP, Hash>::PublicKey key;
 		CryptoPP::ArraySource source(Raw(public_key), public_key.size(), true);
 		key.Load(source);
@@ -871,6 +935,10 @@ Safe::String Certificate::SubjectCommonName() const {
 	return CommonName(m_der.span(), m_subject.offset, m_subject.length);
 }
 
+bool Certificate::HasUniqueSubjectCommonName(std::string_view expected) const noexcept {
+	return UniqueCommonName(m_der.span(), m_subject.offset, m_subject.length, expected);
+}
+
 Safe::String Certificate::IssuerCommonName() const {
 	return CommonName(m_der.span(), m_issuer.offset, m_issuer.length);
 }
@@ -905,13 +973,40 @@ ExpectedPurpose Certificate::VerifyTLSPurpose(TLSRole role) const {
 	bool allowed = true;
 	if (m_has_extended_key_usage && !ReadTLSExtendedKeyUsage(View(m_extended_key_usage), role, allowed))
 		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedExtendedKeyUsage);
-	if (m_has_key_usage && !IsValidTLSKeyUsage(View(m_key_usage_der)))
+	if (m_has_key_usage && !IsValidKeyUsage(View(m_key_usage_der)))
 		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedKeyUsage);
 	if (!allowed)
 		return StormByte::Unexpected<PurposeError>(PurposeError::ExtendedKeyUsageNotAllowed);
 	if (!HasKeyUsage(KeyUsage::DigitalSignature))
 		return StormByte::Unexpected<PurposeError>(PurposeError::KeyUsageNotAllowed);
 	return {};
+}
+
+ExpectedPurpose Certificate::VerifyCodeSigningPurpose() const {
+	if (m_der.empty())
+		return StormByte::Unexpected<PurposeError>(PurposeError::InvalidCertificate);
+	bool allowed = false;
+	if (m_has_extended_key_usage && !ReadExtendedKeyUsage(View(m_extended_key_usage), OidCodeSigning, allowed))
+		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedExtendedKeyUsage);
+	if (m_has_key_usage && !IsValidKeyUsage(View(m_key_usage_der)))
+		return StormByte::Unexpected<PurposeError>(PurposeError::MalformedKeyUsage);
+	if (!allowed)
+		return StormByte::Unexpected<PurposeError>(PurposeError::ExtendedKeyUsageNotAllowed);
+	if (!HasKeyUsage(KeyUsage::DigitalSignature))
+		return StormByte::Unexpected<PurposeError>(PurposeError::KeyUsageNotAllowed);
+	return {};
+}
+
+bool Certificate::VerifyDetachedSignature(DetachedSignatureAlgorithm algorithm, std::span<const std::byte> message,
+	std::span<const std::byte> signature) const noexcept {
+	if (algorithm != DetachedSignatureAlgorithm::ECDSA_SHA384)
+		return false;
+	constexpr std::byte EcdsaSha384Algorithm[] = {
+		std::byte{0x30}, std::byte{0x0a}, std::byte{0x06}, std::byte{0x08},
+		std::byte{0x2a}, std::byte{0x86}, std::byte{0x48}, std::byte{0xce},
+		std::byte{0x3d}, std::byte{0x04}, std::byte{0x03}, std::byte{0x03}
+	};
+	return VerifySignedData(EcdsaSha384Algorithm, message, signature);
 }
 
 StormByte::Crypto::KeyPair::Generic::PointerType Certificate::PublicKey() const noexcept {
@@ -1248,7 +1343,7 @@ ExpectedTLSPeer TLSPeerVerifier::Verify(const Certificate& leaf,
 			if (certificate.m_has_extended_key_usage
 				&& !ReadTLSExtendedKeyUsage(certificate.View(certificate.m_extended_key_usage), role, allowed))
 				return StormByte::Unexpected(TLSPeerFailure(PurposeError::MalformedExtendedKeyUsage, index));
-			if (certificate.m_has_key_usage && !IsValidTLSKeyUsage(certificate.View(certificate.m_key_usage_der)))
+			if (certificate.m_has_key_usage && !IsValidKeyUsage(certificate.View(certificate.m_key_usage_der)))
 				return StormByte::Unexpected(TLSPeerFailure(PurposeError::MalformedKeyUsage, index));
 			if (!allowed)
 				return StormByte::Unexpected(TLSPeerFailure(PurposeError::ExtendedKeyUsageNotAllowed, index));

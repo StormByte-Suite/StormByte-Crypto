@@ -47,6 +47,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace StormByte::Crypto;
 using StormByte::Crypto::X509::Certificate;
@@ -298,6 +299,10 @@ int test_parse_fields() {
 	ASSERT_EQUAL(leaf.Version(), 3u);
 	ASSERT_TRUE(static_cast<std::string_view>(leaf.SubjectCommonName()) == "Test Leaf");
 	ASSERT_TRUE(static_cast<std::string_view>(leaf.IssuerCommonName()) == "Test Intermediate CA");
+	ASSERT_TRUE(leaf.HasUniqueSubjectCommonName("Test Leaf"));
+	ASSERT_FALSE(leaf.HasUniqueSubjectCommonName("test leaf"));
+	ASSERT_FALSE(leaf.HasUniqueSubjectCommonName(""));
+	ASSERT_FALSE(Certificate{}.HasUniqueSubjectCommonName("Test Leaf"));
 	ASSERT_FALSE(leaf.IsCA());
 	ASSERT_TRUE(leaf.HasKeyUsage(KeyUsage::DigitalSignature));
 	ASSERT_TRUE(leaf.HasKeyUsage(KeyUsage::KeyAgreement));
@@ -445,6 +450,41 @@ int test_tampered_certificate_fails() {
 	return 0;
 }
 
+int test_detached_ecdsa_sha384() {
+	const Certificate issuer = Cert(Pem_int);
+	const auto der = Cert(Pem_leaf).Der();
+	const auto bytes = der.span();
+	ASSERT_EQUAL(bytes.size(), std::size_t{482});
+	ASSERT_TRUE(bytes[4] == std::byte{0x30} && bytes[364] == std::byte{0x30}
+		&& bytes[376] == std::byte{0x03} && bytes[378] == std::byte{0x00});
+	const auto message = bytes.subspan(4, 360);
+	const auto signature = bytes.subspan(379);
+	constexpr auto algorithm = X509::DetachedSignatureAlgorithm::ECDSA_SHA384;
+	ASSERT_TRUE(issuer.VerifyDetachedSignature(algorithm, message, signature));
+	ASSERT_FALSE(Certificate{}.VerifyDetachedSignature(algorithm, message, signature));
+	ASSERT_FALSE(Cert(Pem_root).VerifyDetachedSignature(algorithm, message, signature));
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(static_cast<X509::DetachedSignatureAlgorithm>(999), message, signature));
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, {}, signature));
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, message, {}));
+
+	StormByte::Safe::Binary modified_message(message);
+	modified_message[StormByte::ByteSize{8}] ^= std::byte{0x01};
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, modified_message.span(), signature));
+	StormByte::Safe::Binary modified_signature(signature);
+	modified_signature[StormByte::ByteSize{modified_signature.span().size() - 1}] ^= std::byte{0x01};
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, message, modified_signature.span()));
+	modified_signature = StormByte::Safe::Binary(signature);
+	modified_signature.push_back(std::byte{0});
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, message, modified_signature.span()));
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, message, signature.first(signature.size() - 1)));
+	std::vector<std::byte> noncanonical(signature.begin(), signature.end());
+	noncanonical.insert(noncanonical.begin() + 4, std::byte{0});
+	noncanonical[1] = std::byte{0x66};
+	noncanonical[3] = std::byte{0x31};
+	ASSERT_FALSE(issuer.VerifyDetachedSignature(algorithm, message, noncanonical));
+	return 0;
+}
+
 int test_malformed_input_fails() {
 	ASSERT_FALSE(X509::Load({}).has_value());
 	ASSERT_FALSE(X509::Load(Bytes("not a certificate")).has_value());
@@ -474,6 +514,7 @@ int main() {
 		result += test_chain_ca_constraints();
 		result += test_chain_unknown_critical_extension();
 		result += test_tampered_certificate_fails();
+		result += test_detached_ecdsa_sha384();
 		result += test_malformed_input_fails();
 	} catch (const std::exception& error) {
 		std::cerr << "Unexpected exception: " << error.what() << std::endl;
