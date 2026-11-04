@@ -38,6 +38,7 @@ If you landed here from a release link and have not read the tree:
 ### Fixed
 
 - Detect ARM64 CPU features through `getauxval()` on musl. The bundled Crypto++ only queried it with glibc, so Alpine builds never selected PMULL.
+- Work around the GCC/fortify-headers link failure on affected Alpine toolchains without disabling LTO or fortify.
 - Use the correct `:` separator when combining PGO runtime library paths, preserving inherited paths on musl.
 - Reconfigure automatically when `VERSION` changes.
 - Preserve compiler optimization defaults in manual Release builds; CPU selection comes from the toolchain and `ENABLE_LTO` remains independently configurable.

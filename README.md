@@ -90,6 +90,15 @@ Changing the backend requires a clean build directory. Bundled mode does not
 require an installed OpenSSL development package; System mode requires OpenSSL
 3.0+ headers and shared libraries discoverable by CMake.
 
+For GCC/Linux builds with LTO, configure checks for the
+[Alpine fortify-headers/LTO bug](https://gitlab.alpinelinux.org/alpine/aports/-/issues/13735).
+When the toolchain is affected, Crypto adds `-fno-builtin-vsnprintf` to its C++
+build flags, including PGO training and bundled CMake dependencies. LTO and
+fortify remain enabled. This works around the compiler issue only for Crypto's
+build; consumers compiling their own code may need the same flag until their
+toolchain is fixed. A static-only cross toolchain that cannot link the probe
+emits a warning and may require the flag explicitly.
+
 Shared vs static follows CMake `BUILD_SHARED_LIBS` (declared in `lib/`, default ON). A plain configure builds the shared library. `-DBUILD_SHARED_LIBS=OFF` builds a static archive; on Windows the headers then do not use `dllimport`. The downloaded archives are the same mode. Prefer a **static** Crypto++ link when you redistribute; that is independent of whether StormByte-Crypto itself is shared or static.
 
 A shared build keeps this library as its own `.so` / `.dll`. Under the LGPL that is usually the simpler way to ship: the user can replace that file. A static archive is folded into your binary. The LGPL still applies to this code; you must give the recipient a way to relink your product with a different build of this library. If that does not fit how you distribute the final product, a commercial license is available from the copyright holder (see [License](#license)).

@@ -6,6 +6,14 @@ if(ENABLE_TEST)
 		COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/optimizations_test.cmake")
 	set_tests_properties(OptimizationTests PROPERTIES TIMEOUT 15)
 
+	if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+		add_executable(GccFortifyLtoTests
+			toolchain/fortify_lto_test.cxx
+			toolchain/fortify_lto_helper.cxx)
+		add_test(NAME GccFortifyLtoTests COMMAND GccFortifyLtoTests)
+		set_tests_properties(GccFortifyLtoTests PROPERTIES TIMEOUT 15)
+	endif()
+
 	add_library(tests INTERFACE)
 	target_include_directories(tests INTERFACE ${CMAKE_CURRENT_LIST_DIR})
 
