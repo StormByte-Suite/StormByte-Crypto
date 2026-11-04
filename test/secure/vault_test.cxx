@@ -45,6 +45,8 @@
 #include <StormByte/safe/string.hxx>
 #include <StormByte/test_handlers.h>
 
+#include <cstddef>
+#include <ostream>
 #include <string_view>
 #include <utility>
 
@@ -52,6 +54,16 @@ using namespace StormByte::Crypto;
 using StormByte::Crypto::Secure::Password;
 using StormByte::Crypto::Secure::Vault;
 using StormByte::Safe::String;
+
+namespace StormByte::Test::Detail {
+	inline void PrintValue(std::ostream& stream, const StormByte::Size& value) {
+		stream << static_cast<std::size_t>(value);
+	}
+
+	inline void PrintValue(std::ostream& stream, const StormByte::ByteSize& value) {
+		stream << static_cast<std::size_t>(value);
+	}
+}
 
 static_assert(StormByte::Type::MaybeSafe<Exception>);
 static_assert(StormByte::Type::MaybeSafe<Crypter::Exception>);
