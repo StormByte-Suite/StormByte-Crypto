@@ -261,10 +261,34 @@ if(NOT CRYPTOPP_DISABLE_ASM)
 		_cryptopp_file_opts(sha_simd.cpp     "-march=armv7-a;-mfpu=neon")
 		_cryptopp_file_opts(shacal2_simd.cpp "-march=armv7-a;-mfpu=neon")
 		_cryptopp_file_opts(rijndael_simd.cpp "-march=armv7-a;-mfpu=neon")
+	elseif(_cryptopp_arm64 AND NOT MSVC)
+		# Mismos flags que el GNUmakefile upstream. ASIMD es baseline, pero
+		# CRC y Crypto (AES/PMULL/SHA) son opcionales en ARMv8.0-8.2: sin
+		# ellos GCC/Clang rechazan los intrínsecos. cpu.cpp despacha en runtime.
+		foreach(_f IN ITEMS neon_simd.cpp blake2s_simd.cpp blake2b_simd.cpp
+				chacha_simd.cpp cham_simd.cpp lea_simd.cpp simon128_simd.cpp
+				speck128_simd.cpp sm4_simd.cpp)
+			_cryptopp_file_opts(${_f} "-march=armv8-a")
+		endforeach()
+		_cryptopp_file_opts(crc_simd.cpp      "-march=armv8-a+crc")
+		_cryptopp_file_opts(rijndael_simd.cpp "-march=armv8-a+crypto")
+		_cryptopp_file_opts(gcm_simd.cpp      "-march=armv8-a+crypto")
+		_cryptopp_file_opts(gf2n_simd.cpp     "-march=armv8-a+crypto")
+		_cryptopp_file_opts(sha_simd.cpp      "-march=armv8-a+crypto")
+		_cryptopp_file_opts(shacal2_simd.cpp  "-march=armv8-a+crypto")
 	elseif(_cryptopp_ppc)
 		_cryptopp_file_opts(ppc_simd.cpp     "-maltivec")
 	endif()
-	# arm64 / Apple Silicon: NEON es baseline, no hace falta -mfpu.
+	# MSVC ARM64 expone los intrínsecos ARMv8 sin flags.
+endif()
+
+# cpu.cpp solo usa getauxval() con glibc; en musl cae a un stub que devuelve 0
+# y la detección ARM depende de sondas SIGILL (la de PMULL upstream siempre
+# falla). musl tiene getauxval desde 1.1.0.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set_property(SOURCE "${CRYPTOPP_SRC}/cpu.cpp" APPEND PROPERTY
+		COMPILE_DEFINITIONS CRYPTOPP_GETAUXV_AVAILABLE=1
+	)
 endif()
 
 set(cryptopp_ASM)
