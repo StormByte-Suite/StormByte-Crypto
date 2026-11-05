@@ -70,6 +70,10 @@ The suite is split on purpose. Base, Buffer, Config, Database, Logger, Multimedi
 
 ## Installation
 
+`-DENABLE_TEST=ON` keeps normal tests available locally and during PGO training.
+Package discovery fixtures are CI-only and require `-DENABLE_CI_FIXTURES=ON`,
+which is disabled by default and enabled explicitly by CI.
+
 Needs a C++26 compiler, CMake 3.28 or newer, [StormByte-BuildMaster](https://github.com/StormByte-Suite/StormByte-BuildMaster) >= 2.1.5, [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 3.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Configure downloads those release archives. There is no StormByte source submodule. Crypto++, OpenSSL and libbzip2 are build dependencies. `WITH_OPENSSL=BUNDLED` (default) builds pinned OpenSSL 3.5.9 and its pinned CMake port statically into Crypto. `WITH_OPENSSL=SYSTEM` requires OpenSSL 3.0+ development files and links the installed shared libraries. Windows forces `BUNDLED`, matching StormByte-Database. OpenSSL is not part of the public API. Windows builds this module with MSVC: Crypto++ does not build with clang-cl.
 
 ```sh
