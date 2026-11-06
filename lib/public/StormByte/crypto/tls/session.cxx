@@ -40,6 +40,7 @@
  */
 
 #include <StormByte/crypto/tls/session.hxx>
+#include <StormByte/crypto/tls_diagnostic.hxx>
 
 #include <openssl/err.h>
 #include <openssl/pem.h>
@@ -306,6 +307,14 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 	}
 
 	bool Fail(SessionError error) noexcept {
+		Detail::TLSDiagnostic("session failure", static_cast<unsigned long>(error), "");
+		const auto backend = error == SessionError::BackendFailure || error == SessionError::PeerRejected
+			? ERR_peek_last_error() : 0;
+		if (backend) {
+			char description[256];
+			ERR_error_string_n(backend, description, sizeof(description));
+			Detail::TLSDiagnostic("OpenSSL error", backend, description);
+		}
 		state = State::Failed;
 		failure = error;
 		return false;
@@ -339,12 +348,16 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 	}
 
 	bool VerifyPeer(X509_STORE_CTX* store) noexcept {
-		if (X509_verify_cert(store) != 1)
-			return VerificationFailure();
+		if (X509_verify_cert(store) != 1) {
+			const auto code = X509_STORE_CTX_get_error(store);
+			Detail::TLSDiagnostic("OpenSSL certificate verification", static_cast<unsigned long>(code),
+				X509_verify_cert_error_string(code));
+			return VerificationFailure("OpenSSL certificate verification rejected");
+		}
 		STACK_OF(X509)* chain = X509_STORE_CTX_get0_chain(store);
 		const int count = chain ? sk_X509_num(chain) : 0;
 		if (count < 2 || static_cast<std::size_t>(count) > MaxCertificateChain)
-			return VerificationFailure();
+			return VerificationFailure("certificate chain length is outside bounds");
 		try {
 			std::vector<CryptoX509::Certificate> certificates;
 			certificates.reserve(static_cast<std::size_t>(count));
@@ -355,16 +368,16 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 				const int der_size = i2d_X509(certificate, nullptr);
 				if (der_size <= 0
 					|| static_cast<std::size_t>(der_size) > MaxCertificateList - total_der_size)
-					return VerificationFailure();
+					return VerificationFailure("certificate DER size is outside bounds");
 				total_der_size += static_cast<std::size_t>(der_size);
 				std::vector<unsigned char> der(static_cast<std::size_t>(der_size));
 				unsigned char* cursor = der.data();
 				if (i2d_X509(certificate, &cursor) != der_size)
-					return VerificationFailure();
+					return VerificationFailure("certificate DER encoding failed");
 				CryptoX509::Certificate parsed;
 				const auto bytes = std::as_bytes(std::span(der));
 				if (!CryptoX509::Certificate::Parse(bytes, parsed))
-					return VerificationFailure();
+					return VerificationFailure("certificate parser rejected DER");
 				certificates.emplace_back(std::move(parsed));
 			}
 			const auto* leaf = &certificates.front();
@@ -375,27 +388,34 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 				if (trust_source == TrustSource::Bundled) {
 					const auto path = CryptoX509::ValidateBundledTLSPath(*leaf, intermediates,
 						validation_time, identity);
-					if (!path)
-						return VerificationFailure();
+					if (!path) {
+						Detail::TLSDiagnostic("bundled trust path", static_cast<unsigned long>(*path.error()), "");
+						return VerificationFailure("bundled trust policy rejected");
+					}
 				} else {
 					const auto admitted = std::ranges::any_of(anchors,
 						[anchor](const CryptoX509::Certificate& candidate) { return candidate == *anchor; });
-					if (!admitted || !CryptoX509::ValidateCustomCATLSPath(*leaf, intermediates,
-						*anchor, validation_time, identity))
-						return VerificationFailure();
+					if (!admitted)
+						return VerificationFailure("custom terminal root not admitted");
+					const auto path = CryptoX509::ValidateCustomCATLSPath(*leaf, intermediates,
+						*anchor, validation_time, identity);
+					if (!path) {
+						Detail::TLSDiagnostic("custom trust path", static_cast<unsigned long>(*path.error()), "");
+						return VerificationFailure("custom trust policy rejected");
+					}
 				}
 				if (require_revocation && !VerifyRevocation(certificates))
-					return VerificationFailure();
+					return VerificationFailure("required revocation evidence rejected");
 			} else {
 				const auto admitted = std::ranges::any_of(anchors,
 					[anchor](const CryptoX509::Certificate& candidate) { return candidate == *anchor; });
 				if (!admitted || !CryptoX509::TLSPeerVerifier::Verify(*leaf, intermediates,
 					*anchor, validation_time, CryptoX509::TLSRole::Client, nullptr))
-					return VerificationFailure();
+					return VerificationFailure("client certificate root or peer policy rejected");
 			}
 			return true;
 		} catch (...) {
-			return VerificationFailure();
+			return VerificationFailure("exception during peer certificate verification");
 		}
 	}
 
@@ -412,7 +432,8 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 		return true;
 	}
 
-	bool VerificationFailure() noexcept {
+	bool VerificationFailure(const char* reason) noexcept {
+		Detail::TLSDiagnostic("peer verification", 0, reason);
 		verification_failed = true;
 		return false;
 	}
@@ -589,6 +610,7 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 		const int ssl_error = SSL_get_error(ssl, result);
 		if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
 			return true;
+		Detail::TLSDiagnostic("SSL_do_handshake", static_cast<unsigned long>(ssl_error), "");
 		return Fail(verification_failed ? SessionError::PeerRejected : SessionError::BackendFailure);
 	}
 
