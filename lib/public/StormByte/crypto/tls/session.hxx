@@ -88,6 +88,13 @@ namespace StormByte::Crypto::TLS {
 	};
 
 	/**
+	 * @brief Describe a typed setup or operation failure without accessing backend state.
+	 * @param error Failure code.
+	 * @return Static English text; never null, including for unknown codes.
+	 */
+	STORMBYTE_CRYPTO_PUBLIC const char* DescribeSessionError(SessionError error) noexcept;
+
+	/**
 	 * @enum TrustSource
 	 * @brief Source of trust anchors for a client or mutual-TLS server.
 	 */
@@ -243,6 +250,14 @@ namespace StormByte::Crypto::TLS {
 			 * @return Failure code; BackendFailure for a session that was never created.
 			 */
 			SessionError Failure() const noexcept;
+
+			/**
+			 * @brief Read the first fatal failure's explanation without logging or allocation.
+			 * @return Borrowed English text, empty until a fatal failure; empty sessions report why.
+			 * @note Valid until destruction or move-assignment. Copy before destroying the session.
+			 *       Contains no peer names, certificate bodies, credentials or application data.
+			 */
+			std::string_view FailureDetail() const noexcept;
 
 			/**
 			 * @brief Test whether the TLS handshake finished successfully.

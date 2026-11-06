@@ -40,7 +40,6 @@
  */
 
 #include <StormByte/crypto/tls/session.hxx>
-#include <StormByte/crypto/tls_diagnostic.hxx>
 
 #include <openssl/err.h>
 #include <openssl/pem.h>
@@ -49,6 +48,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <string>
@@ -298,6 +298,7 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 	SessionError failure{SessionError::BackendFailure};
 	bool require_revocation{false};
 	bool verification_failed{false};
+	char failure_detail[512]{};
 
 	~Impl() {
 		if (ssl)
@@ -306,14 +307,22 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 			SSL_CTX_free(context);
 	}
 
+	void SetFailureDetail(const char* detail) noexcept {
+		if (!failure_detail[0])
+			std::snprintf(failure_detail, sizeof(failure_detail), "%s", detail);
+	}
+
 	bool Fail(SessionError error) noexcept {
-		Detail::TLSDiagnostic("session failure", static_cast<unsigned long>(error), "");
-		const auto backend = error == SessionError::BackendFailure || error == SessionError::PeerRejected
-			? ERR_peek_last_error() : 0;
-		if (backend) {
-			char description[256];
-			ERR_error_string_n(backend, description, sizeof(description));
-			Detail::TLSDiagnostic("OpenSSL error", backend, description);
+		if (state == State::Failed)
+			return false;
+		if (!failure_detail[0]) {
+			const auto backend = error == SessionError::BackendFailure ? ERR_peek_last_error() : 0;
+			const auto reason = backend ? ERR_reason_error_string(backend) : nullptr;
+			if (reason)
+				std::snprintf(failure_detail, sizeof(failure_detail),
+					"TLS engine failed: %s (OpenSSL code 0x%08lx).", reason, backend);
+			else
+				SetFailureDetail(DescribeSessionError(error));
 		}
 		state = State::Failed;
 		failure = error;
@@ -350,14 +359,15 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 	bool VerifyPeer(X509_STORE_CTX* store) noexcept {
 		if (X509_verify_cert(store) != 1) {
 			const auto code = X509_STORE_CTX_get_error(store);
-			Detail::TLSDiagnostic("OpenSSL certificate verification", static_cast<unsigned long>(code),
-				X509_verify_cert_error_string(code));
-			return VerificationFailure("OpenSSL certificate verification rejected");
+			std::snprintf(failure_detail, sizeof(failure_detail),
+				"Peer certificate verification failed at chain depth %d: %s (X509 code %d).",
+				X509_STORE_CTX_get_error_depth(store), X509_verify_cert_error_string(code), code);
+			return VerificationFailure("Peer certificate verification failed.");
 		}
 		STACK_OF(X509)* chain = X509_STORE_CTX_get0_chain(store);
 		const int count = chain ? sk_X509_num(chain) : 0;
 		if (count < 2 || static_cast<std::size_t>(count) > MaxCertificateChain)
-			return VerificationFailure("certificate chain length is outside bounds");
+			return VerificationFailure("Peer certificate chain is missing a trust anchor or exceeds the supported length.");
 		try {
 			std::vector<CryptoX509::Certificate> certificates;
 			certificates.reserve(static_cast<std::size_t>(count));
@@ -368,16 +378,16 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 				const int der_size = i2d_X509(certificate, nullptr);
 				if (der_size <= 0
 					|| static_cast<std::size_t>(der_size) > MaxCertificateList - total_der_size)
-					return VerificationFailure("certificate DER size is outside bounds");
+					return VerificationFailure("Peer certificate encoding is invalid or exceeds the chain size limit.");
 				total_der_size += static_cast<std::size_t>(der_size);
 				std::vector<unsigned char> der(static_cast<std::size_t>(der_size));
 				unsigned char* cursor = der.data();
 				if (i2d_X509(certificate, &cursor) != der_size)
-					return VerificationFailure("certificate DER encoding failed");
+					return VerificationFailure("Peer certificate could not be encoded for policy validation.");
 				CryptoX509::Certificate parsed;
 				const auto bytes = std::as_bytes(std::span(der));
 				if (!CryptoX509::Certificate::Parse(bytes, parsed))
-					return VerificationFailure("certificate parser rejected DER");
+					return VerificationFailure("Peer certificate could not be parsed for policy validation.");
 				certificates.emplace_back(std::move(parsed));
 			}
 			const auto* leaf = &certificates.front();
@@ -385,55 +395,99 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 			const std::span<const CryptoX509::Certificate> intermediates(
 				certificates.data() + 1, certificates.size() - 2);
 			if (role == Role::Client) {
+				const auto identity_bytes = identity.Value().span();
+				const bool matches = identity.Type() == CryptoX509::SubjectAltNameType::DNS
+					? static_cast<bool>(leaf->VerifyDNSName(std::string_view(
+						reinterpret_cast<const char*>(identity_bytes.data()), identity_bytes.size())))
+					: static_cast<bool>(leaf->VerifyIPAddress(identity_bytes));
+				if (!matches)
+					return VerificationFailure("Peer certificate does not match the expected DNS name or IP address (SAN).");
 				if (trust_source == TrustSource::Bundled) {
 					const auto path = CryptoX509::ValidateBundledTLSPath(*leaf, intermediates,
 						validation_time, identity);
-					if (!path) {
-						Detail::TLSDiagnostic("bundled trust path", static_cast<unsigned long>(*path.error()), "");
-						return VerificationFailure("bundled trust policy rejected");
-					}
+					if (!path)
+						return TrustFailure(*path.error());
 				} else {
 					const auto admitted = std::ranges::any_of(anchors,
 						[anchor](const CryptoX509::Certificate& candidate) { return candidate == *anchor; });
 					if (!admitted)
-						return VerificationFailure("custom terminal root not admitted");
+						return VerificationFailure("Peer chain does not end at a configured custom trust anchor.");
 					const auto path = CryptoX509::ValidateCustomCATLSPath(*leaf, intermediates,
 						*anchor, validation_time, identity);
-					if (!path) {
-						Detail::TLSDiagnostic("custom trust path", static_cast<unsigned long>(*path.error()), "");
-						return VerificationFailure("custom trust policy rejected");
-					}
+					if (!path)
+						return TrustFailure(*path.error());
 				}
 				if (require_revocation && !VerifyRevocation(certificates))
-					return VerificationFailure("required revocation evidence rejected");
+					return false;
 			} else {
 				const auto admitted = std::ranges::any_of(anchors,
 					[anchor](const CryptoX509::Certificate& candidate) { return candidate == *anchor; });
 				if (!admitted || !CryptoX509::TLSPeerVerifier::Verify(*leaf, intermediates,
 					*anchor, validation_time, CryptoX509::TLSRole::Client, nullptr))
-					return VerificationFailure("client certificate root or peer policy rejected");
+					return VerificationFailure("Client certificate failed mutual-TLS trust, purpose or chain validation.");
 			}
 			return true;
 		} catch (...) {
-			return VerificationFailure("exception during peer certificate verification");
+			return VerificationFailure("Peer certificate validation could not complete because of an internal exception.");
 		}
 	}
 
 	bool VerifyRevocation(const std::vector<CryptoX509::Certificate>& certificates) {
 		if (evidence.size() != certificates.size() - 1)
-			return false;
+			return VerificationFailure("Required revocation evidence is missing: supply one CRL or OCSP response per non-anchor certificate.");
 		for (std::size_t index = 0; index + 1 < certificates.size(); ++index) {
 			const auto der = evidence[index].der.span();
 			const auto result = CryptoX509::RevocationVerifier::Verify(certificates[index],
 				certificates[index + 1], evidence[index].format, der, validation_time);
-			if (!result || *result != CryptoX509::RevocationStatus::Good)
-				return false;
+			if (!result) {
+				switch (*result.error()) {
+					case CryptoX509::RevocationError::NotYetValid:
+						return VerificationFailure("Revocation evidence is not yet valid at the configured validation time.");
+					case CryptoX509::RevocationError::Stale:
+						return VerificationFailure("Revocation evidence has expired; supply a fresh CRL or OCSP response.");
+					case CryptoX509::RevocationError::MissingNextUpdate:
+						return VerificationFailure("Revocation evidence has no nextUpdate freshness limit.");
+					case CryptoX509::RevocationError::InvalidSignature:
+						return VerificationFailure("Revocation evidence signature is invalid.");
+					case CryptoX509::RevocationError::ResponderUnauthorized:
+						return VerificationFailure("OCSP responder is not authorized by the certificate issuer.");
+					case CryptoX509::RevocationError::IssuerMismatch:
+					case CryptoX509::RevocationError::CertificateMismatch:
+						return VerificationFailure("Revocation evidence does not match the certificate or its issuer.");
+					case CryptoX509::RevocationError::UnsupportedFeature:
+						return VerificationFailure("Revocation evidence uses an unsupported algorithm, extension or response format.");
+					case CryptoX509::RevocationError::InvalidRequest:
+					case CryptoX509::RevocationError::MalformedEvidence:
+						return VerificationFailure("Revocation evidence is malformed or exceeds the supported limits.");
+				}
+				return VerificationFailure("Revocation evidence validation failed with an unknown error.");
+			}
+			if (*result == CryptoX509::RevocationStatus::Revoked)
+				return VerificationFailure("Peer certificate has been revoked.");
+			if (*result != CryptoX509::RevocationStatus::Good)
+				return VerificationFailure("Revocation responder reports an unknown certificate status.");
 		}
 		return true;
 	}
 
+	bool TrustFailure(CryptoX509::TrustPathError error) noexcept {
+		switch (error) {
+			case CryptoX509::TrustPathError::BundleInvalid:
+				return VerificationFailure("Bundled trust roots failed integrity or parsing checks; reinstall or update Crypto.");
+			case CryptoX509::TrustPathError::InvalidRequest:
+				return VerificationFailure("Peer certificate does not satisfy the required server identity or TLS purpose.");
+			case CryptoX509::TrustPathError::RootNotAdmitted:
+				return VerificationFailure("Peer chain has no trust anchor admitted by the bundled roots.");
+			case CryptoX509::TrustPathError::PeerPathRejected:
+				return VerificationFailure("Peer chain failed certificate constraints, validity or signature policy.");
+			case CryptoX509::TrustPathError::NativePolicyRejected:
+				return VerificationFailure("Native TLS policy rejected the certificate chain against the configured exclusive trust anchors.");
+		}
+		return VerificationFailure("Peer trust validation failed with an unknown error.");
+	}
+
 	bool VerificationFailure(const char* reason) noexcept {
-		Detail::TLSDiagnostic("peer verification", 0, reason);
+		SetFailureDetail(reason);
 		verification_failed = true;
 		return false;
 	}
@@ -610,7 +664,6 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 		const int ssl_error = SSL_get_error(ssl, result);
 		if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
 			return true;
-		Detail::TLSDiagnostic("SSL_do_handshake", static_cast<unsigned long>(ssl_error), "");
 		return Fail(verification_failed ? SessionError::PeerRejected : SessionError::BackendFailure);
 	}
 
@@ -624,6 +677,24 @@ struct StormByte::Crypto::TLS::Session::Impl final {
 };
 
 using namespace StormByte::Crypto::TLS;
+
+const char* StormByte::Crypto::TLS::DescribeSessionError(SessionError error) noexcept {
+	switch (error) {
+		case SessionError::InvalidConfiguration:
+			return "TLS configuration is invalid: check identity, trust anchors, certificates, private key and ALPN.";
+		case SessionError::UnsupportedPolicy:
+			return "TLS policy is unsupported: check TLS 1.3 cipher suites, groups and signature schemes.";
+		case SessionError::BackendFailure:
+			return "TLS engine failed during negotiation, record processing or resource allocation.";
+		case SessionError::PeerRejected:
+			return "Peer certificate was rejected: check trust chain, identity, validity and required revocation evidence.";
+		case SessionError::InvalidState:
+			return "TLS operation is not allowed in the current session state.";
+		case SessionError::BufferLimit:
+			return "TLS operation exceeds a configured buffer or certificate size limit.";
+	}
+	return "Unknown TLS session failure.";
+}
 
 Session::Session() noexcept = default;
 
@@ -786,6 +857,12 @@ State Session::Status() const noexcept {
 }
 SessionError Session::Failure() const noexcept {
 	return m_impl ? m_impl->failure : SessionError::BackendFailure;
+}
+
+std::string_view Session::FailureDetail() const noexcept {
+	if (!m_impl)
+		return "TLS session is empty or has been moved from.";
+	return m_impl->failure_detail;
 }
 
 bool Session::HandshakeComplete() const noexcept {

@@ -39,10 +39,8 @@
  */
 
 #include <StormByte/crypto/x509/native_trust.hxx>
-#include <StormByte/crypto/tls_diagnostic.hxx>
 
 #include <algorithm>
-#include <cstdio>
 #include <limits>
 #include <memory>
 #include <type_traits>
@@ -91,19 +89,15 @@ namespace {
 	 */
 	Store MemoryStore(std::span<const Certificate> certificates) {
 		Store store(CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, nullptr), CloseStore);
-		if (!store) {
-			StormByte::Crypto::Detail::TLSDiagnostic("CertOpenStore", GetLastError(), "");
+		if (!store)
 			return store;
-		}
 		for (const auto& certificate : certificates) {
 			const auto der = certificate.Der().span();
 			if (der.empty() || der.size() > std::numeric_limits<DWORD>::max()
 				|| !CertAddEncodedCertificateToStore(store.get(), X509_ASN_ENCODING,
 					reinterpret_cast<const BYTE*>(der.data()), static_cast<DWORD>(der.size()),
-					CERT_STORE_ADD_ALWAYS, nullptr)) {
-					StormByte::Crypto::Detail::TLSDiagnostic("memory certificate import", GetLastError(), "");
-					return Store(nullptr, CloseStore);
-			}
+					CERT_STORE_ADD_ALWAYS, nullptr))
+				return Store(nullptr, CloseStore);
 		}
 		return store;
 	}
@@ -120,10 +114,8 @@ namespace {
 		config.dwFlags = CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL | CERT_CHAIN_DISABLE_AIA;
 		config.dwExclusiveFlags = CERT_CHAIN_EXCLUSIVE_ENABLE_CA_FLAG;
 		HCERTCHAINENGINE engine = nullptr;
-		if (!CertCreateCertificateChainEngine(&config, &engine)) {
-			StormByte::Crypto::Detail::TLSDiagnostic("CertCreateCertificateChainEngine", GetLastError(), "");
+		if (!CertCreateCertificateChainEngine(&config, &engine))
 			return Engine(nullptr, CertFreeCertificateChainEngine);
-		}
 		return Engine(engine, CertFreeCertificateChainEngine);
 	}
 
@@ -136,8 +128,6 @@ namespace {
 	 * @return Successful owned chain or null; terminal-root admission is checked separately.
 	 */
 	Chain Evaluate(HCERTCHAINENGINE engine, const Certificate& leaf, HCERTSTORE issuers, TimePoint at) {
-		const auto scope = "exclusive bundled/custom roots";
-		StormByte::Crypto::Detail::TLSDiagnostic("Windows chain evaluation", 0, scope);
 		const auto der = leaf.Der().span();
 		if (der.empty() || der.size() > std::numeric_limits<DWORD>::max())
 			return Chain(nullptr, CertFreeCertificateChain);
@@ -166,28 +156,11 @@ namespace {
 		if (!CertGetCertificateChain(engine, context.get(), &time, issuers, &parameters,
 			CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL | CERT_CHAIN_DISABLE_AIA
 				| CERT_CHAIN_DISABLE_AUTH_ROOT_AUTO_UPDATE | CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY,
-			nullptr, &raw)) {
-			StormByte::Crypto::Detail::TLSDiagnostic("CertGetCertificateChain", GetLastError(), scope);
+			nullptr, &raw))
 			return Chain(nullptr, CertFreeCertificateChain);
-		}
 		Chain chain(raw, CertFreeCertificateChain);
-		if (chain->TrustStatus.dwErrorStatus != CERT_TRUST_NO_ERROR) {
-			StormByte::Crypto::Detail::TLSDiagnostic("Windows chain trust status",
-				chain->TrustStatus.dwErrorStatus, scope);
-			for (DWORD index = 0; index < chain->cChain; ++index) {
-				const auto simple = chain->rgpChain[index];
-				for (DWORD element = 0; element < simple->cElement; ++element) {
-					const auto errors = simple->rgpElement[element]->TrustStatus.dwErrorStatus;
-					if (errors) {
-						char position[128];
-						std::snprintf(position, sizeof(position), "%s; chain=%lu certificate=%lu (leaf=0)",
-							scope, static_cast<unsigned long>(index), static_cast<unsigned long>(element));
-						StormByte::Crypto::Detail::TLSDiagnostic("Windows certificate trust status", errors, position);
-					}
-				}
-			}
+		if (chain->TrustStatus.dwErrorStatus != CERT_TRUST_NO_ERROR)
 			return Chain(nullptr, CertFreeCertificateChain);
-		}
 		SSL_EXTRA_CERT_CHAIN_POLICY_PARA ssl{};
 		ssl.cbSize = sizeof(ssl);
 		ssl.dwAuthType = AUTHTYPE_SERVER;
@@ -196,14 +169,9 @@ namespace {
 		policy.pvExtraPolicyPara = &ssl;
 		CERT_CHAIN_POLICY_STATUS status{};
 		status.cbSize = sizeof(status);
-		if (!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, chain.get(), &policy, &status)) {
-			StormByte::Crypto::Detail::TLSDiagnostic("CertVerifyCertificateChainPolicy", GetLastError(), scope);
+		if (!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, chain.get(), &policy, &status)
+			|| status.dwError != 0)
 			return Chain(nullptr, CertFreeCertificateChain);
-		}
-		if (status.dwError != 0) {
-			StormByte::Crypto::Detail::TLSDiagnostic("Windows SSL policy status", status.dwError, scope);
-			return Chain(nullptr, CertFreeCertificateChain);
-		}
 		return chain;
 	}
 
@@ -243,10 +211,8 @@ namespace {
 		const auto root = Terminal(scoped);
 		if (root.empty() || !std::any_of(anchors.begin(), anchors.end(), [&](const Certificate& anchor) {
 			return anchor.IsCA() && anchor.IsValidAt(at) && std::ranges::equal(root, anchor.Der().span());
-		})) {
-			StormByte::Crypto::Detail::TLSDiagnostic("native root admission", 0, "exclusive chain rejected or terminal root not admitted");
+		}))
 			return false;
-		}
 		return true;
 	}
 }
@@ -316,15 +282,8 @@ namespace {
 		if (SecTrustSetAnchorCertificates(trust.get(), anchors) != errSecSuccess
 			|| SecTrustSetAnchorCertificatesOnly(trust.get(), true) != errSecSuccess)
 			return Owner<SecTrustRef>(nullptr, Release);
-		CFErrorRef rawError = nullptr;
-		const bool accepted = SecTrustEvaluateWithError(trust.get(), &rawError);
-		Owner<CFErrorRef> error(rawError, Release);
-		if (!accepted) {
-			StormByte::Crypto::Detail::TLSDiagnostic("macOS SecTrustEvaluateWithError",
-				error ? static_cast<unsigned long>(CFErrorGetCode(error.get())) : 0,
-				"exclusive bundled/custom roots");
+		if (!SecTrustEvaluateWithError(trust.get(), nullptr))
 			return Owner<SecTrustRef>(nullptr, Release);
-		}
 		return trust;
 	}
 

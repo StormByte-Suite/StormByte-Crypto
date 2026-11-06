@@ -438,19 +438,20 @@ native TLS policy with those exclusive anchors, without additionally requiring
 the root to be installed or trusted in the system store. No trust downloads,
 system-root updates or store modifications are performed.
 
-For opt-in TLS troubleshooting, set `STORMBYTE_TLS_DIAGNOSTICS=1` before starting
-the application. Crypto writes bounded diagnostic lines to standard error and,
-on Windows, `OutputDebugStringA` (visible with a debugger or DebugView). Redirect
-standard error to a file in the launching shell if needed. No log file is opened
-by Crypto, and diagnostics are disabled by default. Messages distinguish OpenSSL
-verification/handshake errors, exclusive-anchor Windows chain checks,
-per-certificate trust flags (leaf index 0), native SSL policy rejection and
-terminal-root admission failures; macOS trust rejection includes its native error code.
-No plaintext, credentials, private keys or certificate bodies are logged.
-Diagnostics do not change trust policy, error enumeration values, public headers,
-object layouts or exported interfaces; only the Crypto DLL needs replacing when
-using this instrumentation with an existing application built for the same ABI
-and runtime/toolchain.
+After a fatal failure, `Session::FailureDetail()` returns a bounded, session-owned
+English explanation, including certificate verification reason/depth/code,
+SAN identity mismatch, trust-policy rejection, revocation failure or an OpenSSL
+engine reason/code. The first fatal explanation survives subsequent calls and
+moves; copy the borrowed view before destroying or replacing its owning session.
+Healthy sessions return an empty view; empty/moved-from sessions explain that
+they have no engine. `TLS::DescribeSessionError(code)` supplies static category
+descriptions for setup failures returned by `CreateClient`/`CreateServer` and
+other typed operation errors. Neither API logs, reads an environment variable
+or includes peer names, certificate bodies, credentials or application data.
+Transport clients must preserve these explanations before destroying a failed
+session; reducing them to a generic TLS error loses the cause. The new functions
+are additive: existing enum values, object layouts and function signatures stay
+unchanged.
 
 These are stream-engine tests over two in-memory TLS endpoints, not sockets or
 an external service. Network integration remains the responsibility of the

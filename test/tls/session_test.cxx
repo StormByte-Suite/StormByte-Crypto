@@ -56,6 +56,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -383,6 +384,15 @@ int test_tls_rejects_wrong_identity_and_missing_revocation_evidence() {
 	CompleteHandshake(wrong_name, server);
 	ASSERT_TRUE(wrong_name.Status() == TLS::State::Failed);
 	ASSERT_TRUE(wrong_name.Failure() == TLS::SessionError::PeerRejected);
+	ASSERT_TRUE(wrong_name.FailureDetail().find("expected DNS name or IP address") != std::string_view::npos);
+	const std::string original_detail(wrong_name.FailureDetail());
+	const std::array<std::byte, 1> extra{std::byte{0}};
+	ASSERT_FALSE(wrong_name.FeedEncrypted(extra));
+	ASSERT_FALSE(wrong_name.Shutdown());
+	ASSERT_TRUE(wrong_name.FailureDetail() == original_detail);
+	auto moved = std::move(wrong_name);
+	ASSERT_TRUE(moved.FailureDetail() == original_detail);
+	ASSERT_TRUE(wrong_name.FailureDetail().find("empty or has been moved") != std::string_view::npos);
 
 	server_result = TLS::Session::CreateServer(ServerConfig(fixtures));
 	ASSERT_TRUE(server_result);
@@ -395,6 +405,45 @@ int test_tls_rejects_wrong_identity_and_missing_revocation_evidence() {
 	CompleteHandshake(revocation_client, server);
 	ASSERT_TRUE(revocation_client.Status() == TLS::State::Failed);
 	ASSERT_TRUE(revocation_client.Failure() == TLS::SessionError::PeerRejected);
+	ASSERT_TRUE(revocation_client.FailureDetail().find("revocation evidence is missing") != std::string_view::npos);
+	RETURN_TEST(0);
+}
+
+int test_tls_failure_descriptions_preserve_certificate_reasons() {
+	auto fixtures = MakeFixtures();
+	auto configuration = ClientConfig(fixtures, "localhost");
+	configuration.validation_time += std::chrono::days(60);
+	auto client_result = TLS::Session::CreateClient(configuration);
+	auto server_result = TLS::Session::CreateServer(ServerConfig(fixtures));
+	ASSERT_TRUE(client_result && server_result);
+	auto client = std::move(*client_result);
+	auto server = std::move(*server_result);
+	ASSERT_TRUE(client.FailureDetail().empty());
+	CompleteHandshake(client, server);
+	ASSERT_TRUE(client.Status() == TLS::State::Failed);
+	ASSERT_TRUE(client.FailureDetail().find("certificate has expired") != std::string_view::npos);
+	ASSERT_TRUE(client.FailureDetail().find("X509 code") != std::string_view::npos);
+
+	configuration = ClientConfig(fixtures, "localhost");
+	configuration.trust_source = TLS::TrustSource::Bundled;
+	configuration.trust_anchors = {};
+	client_result = TLS::Session::CreateClient(configuration);
+	server_result = TLS::Session::CreateServer(ServerConfig(fixtures));
+	ASSERT_TRUE(client_result && server_result);
+	client = std::move(*client_result);
+	server = std::move(*server_result);
+	CompleteHandshake(client, server);
+	ASSERT_TRUE(client.Status() == TLS::State::Failed);
+	ASSERT_TRUE(client.FailureDetail().find("Peer certificate verification failed") != std::string_view::npos);
+	ASSERT_TRUE(client.FailureDetail().find("X509 code") != std::string_view::npos);
+
+	const std::array errors{TLS::SessionError::InvalidConfiguration, TLS::SessionError::UnsupportedPolicy,
+		TLS::SessionError::BackendFailure, TLS::SessionError::PeerRejected,
+		TLS::SessionError::InvalidState, TLS::SessionError::BufferLimit};
+	for (const auto error : errors)
+		ASSERT_TRUE(std::string_view(TLS::DescribeSessionError(error)).size() > 30);
+	ASSERT_TRUE(std::string_view(TLS::DescribeSessionError(static_cast<TLS::SessionError>(-1)))
+		== "Unknown TLS session failure.");
 	RETURN_TEST(0);
 }
 
@@ -436,6 +485,8 @@ int test_mutual_tls_validates_client_certificate() {
 	ASSERT_TRUE(CompleteHandshake(client, server));
 	ASSERT_TRUE(client.Status() == TLS::State::Open);
 	ASSERT_TRUE(server.Status() == TLS::State::Open);
+	ASSERT_TRUE(client.FailureDetail().empty());
+	ASSERT_TRUE(server.FailureDetail().empty());
 	RETURN_TEST(0);
 }
 
@@ -499,6 +550,8 @@ int test_ciphertext_backpressure_and_alert_drain_after_failure() {
 	const auto rejected = broken_server.FeedEncrypted(invalid_record);
 	ASSERT_FALSE(rejected);
 	ASSERT_TRUE(broken_server.Status() == TLS::State::Failed);
+	ASSERT_TRUE(broken_server.FailureDetail().find("TLS engine failed:") != std::string_view::npos);
+	ASSERT_TRUE(broken_server.FailureDetail().find("OpenSSL code") != std::string_view::npos);
 	const auto alert = broken_server.DrainEncrypted(encrypted);
 	ASSERT_TRUE(alert && *alert > 0);
 	RETURN_TEST(0);
@@ -509,6 +562,7 @@ int main() {
 	result += test_tls_fixture_server_path_meets_platform_policy();
 	result += test_buffer_driven_tls13_rsa_pss_alpn_and_bidirectional_data();
 	result += test_tls_rejects_wrong_identity_and_missing_revocation_evidence();
+	result += test_tls_failure_descriptions_preserve_certificate_reasons();
 	result += test_tls_rejects_invalid_policy_and_protocol_configuration();
 	result += test_mutual_tls_validates_client_certificate();
 	result += test_tls_without_alpn_reports_empty_protocol();

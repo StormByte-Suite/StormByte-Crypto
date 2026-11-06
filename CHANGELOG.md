@@ -20,7 +20,19 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.0...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.1...HEAD
+
+## [3.0.1] - 2026-11-06
+
+### Added
+
+- Add `TLS::Session::FailureDetail()` for a persistent per-session failure explanation and `TLS::DescribeSessionError()` for typed error descriptions. Certificate verification reasons and codes, identity mismatch, revocation failures and OpenSSL engine reasons remain available to transport consumers without automatic output, environment switches or public object-layout changes.
+
+### Fixed
+
+- Use the bundled TLS roots as the exclusive trust anchors on every platform. Windows and macOS retain native chain and TLS policy validation without additionally requiring the root to be installed or trusted in the system store. This fixes valid public TLS connections failing on Windows with an incomplete system chain, while preserving offline validation, identity checks and public ABI compatibility.
+
+[3.0.1]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.0...3.0.1
 
 ## [3.0.0] - 2026-11-04
 
