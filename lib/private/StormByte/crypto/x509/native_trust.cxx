@@ -42,6 +42,7 @@
 #include <StormByte/crypto/tls_diagnostic.hxx>
 
 #include <algorithm>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <type_traits>
