@@ -433,14 +433,19 @@ handshake. Crypto does not fetch revocation data; the transport/application
 must provide it. Missing or invalid required evidence rejects the peer. The
 mTLS client-certificate path currently has no revocation-evidence option.
 
+Bundled trust uses the embedded roots on every platform. Windows and macOS apply
+native TLS policy with those exclusive anchors, without additionally requiring
+the root to be installed or trusted in the system store. No trust downloads,
+system-root updates or store modifications are performed.
+
 For opt-in TLS troubleshooting, set `STORMBYTE_TLS_DIAGNOSTICS=1` before starting
 the application. Crypto writes bounded diagnostic lines to standard error and,
 on Windows, `OutputDebugStringA` (visible with a debugger or DebugView). Redirect
 standard error to a file in the launching shell if needed. No log file is opened
 by Crypto, and diagnostics are disabled by default. Messages distinguish OpenSSL
-verification/handshake errors, scoped versus system Windows chain checks,
+verification/handshake errors, exclusive-anchor Windows chain checks,
 per-certificate trust flags (leaf index 0), native SSL policy rejection and
-terminal-root mismatch; macOS trust rejection includes its native error code.
+terminal-root admission failures; macOS trust rejection includes its native error code.
 No plaintext, credentials, private keys or certificate bodies are logged.
 Diagnostics do not change trust policy, error enumeration values, public headers,
 object layouts or exported interfaces; only the Crypto DLL needs replacing when

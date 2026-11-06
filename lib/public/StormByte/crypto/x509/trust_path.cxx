@@ -111,10 +111,10 @@ ExpectedTrustPath StormByte::Crypto::X509::ValidateBundledTLSPath(const Certific
 	if (!roots)
 		return StormByte::Unexpected(*roots.error());
 #ifdef WINDOWS
-	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at, true))
+	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #elifdef MACOS
-	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at, true))
+	if (!Detail::NativeTrustPath(leaf, intermediates, *roots, at))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #else
 	const auto& last = intermediates.empty() ? leaf : intermediates.back();
@@ -141,10 +141,10 @@ ExpectedTrustPath StormByte::Crypto::X509::ValidateCustomCATLSPath(const Certifi
 	if (!ValidRequest(leaf, intermediates, identity) || anchor.Der().empty() || !anchor.IsCA())
 		return StormByte::Unexpected(TrustPathError::InvalidRequest);
 #ifdef WINDOWS
-	if (!Detail::NativeTrustPath(leaf, intermediates, std::span(&anchor, 1), at, false))
+	if (!Detail::NativeTrustPath(leaf, intermediates, std::span(&anchor, 1), at))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #elifdef MACOS
-	if (!Detail::NativeTrustPath(leaf, intermediates, std::span(&anchor, 1), at, false))
+	if (!Detail::NativeTrustPath(leaf, intermediates, std::span(&anchor, 1), at))
 		return StormByte::Unexpected(TrustPathError::NativePolicyRejected);
 #else
 	if (!TLSPeerVerifier::Verify(leaf, intermediates, anchor, at, TLSRole::Server, &identity))

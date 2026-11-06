@@ -74,21 +74,19 @@ namespace {
 // -------------------
 
 /**
- * @brief Native fixture trust AND exclusive admitted anchors must accept the same root.
+ * @brief Only explicit anchors determine trust, without requiring OS-root admission.
  * @return Number of failures.
  */
-int test_isolated_intersection() {
+int test_isolated_admission() {
 	const auto leaf = Cert(LeafRSA256);
 	const std::array chain{Cert(InterRSA)};
 	const std::array allowed{Cert(RootRSA)};
 	const std::array other{Cert(Rogue)};
-	ASSERT_TRUE(Detail::NativeTrustPathForTest(leaf, chain, allowed, leaf.NotBefore(), allowed));
-	// A simulated OS-only root must not be unioned into bundle admission.
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, chain, other, leaf.NotBefore(), allowed));
-	// A bundle-only root must not bypass the native admission restriction.
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, chain, allowed, leaf.NotBefore(), other));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, chain, {}, leaf.NotBefore(), allowed));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, chain, allowed, leaf.NotBefore(), {}));
+	ASSERT_TRUE(Detail::NativeTrustPath(leaf, chain, allowed, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, chain, other, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, chain, {}, leaf.NotBefore()));
+	const std::array candidates{Cert(InterRSA), Cert(RootRSA)};
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, candidates, other, leaf.NotBefore()));
 	RETURN_TEST(0);
 }
 
@@ -102,7 +100,7 @@ int test_public_isolated_path() {
 	const auto roots = LoadBundledTLSRoots();
 	ASSERT_TRUE(static_cast<bool>(roots));
 	const TimePoint at = std::chrono::sys_days(std::chrono::year(2026) / 10 / 31);
-	ASSERT_TRUE(Detail::NativeTrustPathForTest(leaf, chain, *roots, at, *roots));
+	ASSERT_TRUE(Detail::NativeTrustPath(leaf, chain, *roots, at));
 	RETURN_TEST(0);
 }
 
@@ -118,13 +116,13 @@ int test_native_constraints() {
 	const auto leaf = Cert(Leaf);
 	const std::array roots{Cert(Root)};
 	const std::array chain{Cert(Inter)};
-	ASSERT_TRUE(Detail::NativeTrustPathForTest(leaf, chain, roots, leaf.NotBefore(), roots));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(Cert(LeafClient), chain, roots, leaf.NotBefore(), roots));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, std::array{Cert(InterClient)}, roots, leaf.NotBefore(), roots));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(Cert(LeafSub),
-		std::array{Cert(Sub), Cert(InterPathZero)}, roots, leaf.NotBefore(), roots));
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, chain, roots,
-		leaf.NotAfter() + std::chrono::seconds(1), roots));
+	ASSERT_TRUE(Detail::NativeTrustPath(leaf, chain, roots, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(Cert(LeafClient), chain, roots, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, std::array{Cert(InterClient)}, roots, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(Cert(LeafSub),
+		std::array{Cert(Sub), Cert(InterPathZero)}, roots, leaf.NotBefore()));
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, chain, roots,
+		leaf.NotAfter() + std::chrono::seconds(1)));
 	RETURN_TEST(0);
 }
 
@@ -139,8 +137,8 @@ int test_native_signature_failure() {
 	Certificate leaf;
 	ASSERT_TRUE(Certificate::Parse(der.span(), leaf));
 	const std::array roots{Cert(RootRSA)};
-	ASSERT_TRUE(!Detail::NativeTrustPathForTest(leaf, std::array{Cert(InterRSA)},
-		roots, original.NotBefore(), roots));
+	ASSERT_TRUE(!Detail::NativeTrustPath(leaf, std::array{Cert(InterRSA)},
+		roots, original.NotBefore()));
 	RETURN_TEST(0);
 }
 
@@ -153,7 +151,7 @@ int main() {
 	// -------------------
 	// Admission
 	// -------------------
-	result += test_isolated_intersection();
+	result += test_isolated_admission();
 	result += test_public_isolated_path();
 	// -------------------
 	// Policy

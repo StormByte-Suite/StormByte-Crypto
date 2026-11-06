@@ -129,14 +129,14 @@ namespace {
 
 	/**
 	 * @brief Evaluates native server TLS policy without revocation or network fetching.
-	 * @param engine Exclusive engine, or null for normal OS policy and root admission.
+	 * @param engine Exclusive engine with caller-selected trust anchors.
 	 * @param leaf Server leaf.
 	 * @param issuers Untrusted memory candidates.
 	 * @param at Validation time.
 	 * @return Successful owned chain or null; terminal-root admission is checked separately.
 	 */
 	Chain Evaluate(HCERTCHAINENGINE engine, const Certificate& leaf, HCERTSTORE issuers, TimePoint at) {
-		const auto scope = engine ? "exclusive bundled/custom roots" : "Windows system roots";
+		const auto scope = "exclusive bundled/custom roots";
 		StormByte::Crypto::Detail::TLSDiagnostic("Windows chain evaluation", 0, scope);
 		const auto der = leaf.Der().span();
 		if (der.empty() || der.size() > std::numeric_limits<DWORD>::max())
@@ -221,18 +221,15 @@ namespace {
 	}
 
 	/**
-	 * @brief Intersects scoped native anchors with independently evaluated native system trust.
+	 * @brief Applies native TLS policy with exclusive caller-selected anchors.
 	 * @param leaf Server certificate.
 	 * @param intermediates Untrusted issuers.
 	 * @param anchors Exclusive permitted roots.
 	 * @param at Validation time.
-	 * @param requireSystem Whether independent OS policy is mandatory.
-	 * @param testSystem Test-only exclusive system root set, or null in production.
 	 * @return Path-only acceptance with no OS-root union.
 	 */
 	bool ValidateNative(const Certificate& leaf, std::span<const Certificate> intermediates,
-		std::span<const Certificate> anchors, TimePoint at, bool requireSystem,
-		const std::span<const Certificate>* testSystem) {
+		std::span<const Certificate> anchors, TimePoint at) {
 		if (anchors.empty())
 			return false;
 		auto roots = MemoryStore(anchors);
@@ -250,19 +247,7 @@ namespace {
 			StormByte::Crypto::Detail::TLSDiagnostic("native root admission", 0, "exclusive chain rejected or terminal root not admitted");
 			return false;
 		}
-		if (!requireSystem)
-			return true;
-		auto systemRoots = testSystem ? MemoryStore(*testSystem) : Store(nullptr, CloseStore);
-		auto systemEngine = testSystem && systemRoots ? ExclusiveEngine(systemRoots.get())
-			: Engine(nullptr, CertFreeCertificateChainEngine);
-		if (testSystem && (!systemRoots || !systemEngine))
-			return false;
-		auto native = Evaluate(systemEngine.get(), leaf, issuers.get(), at);
-		const bool sameRoot = std::ranges::equal(root, Terminal(native));
-		if (!sameRoot)
-			StormByte::Crypto::Detail::TLSDiagnostic("native root intersection", 0,
-				native ? "system and scoped terminal roots differ" : "Windows system chain rejected");
-		return sameRoot;
+		return true;
 	}
 }
 #elifdef MACOS
@@ -311,7 +296,7 @@ namespace {
 	/**
 	 * @brief Evaluates native SSL server policy with network fetching disabled.
 	 * @param certificates Leaf and untrusted intermediates.
-	 * @param anchors Exclusive scoped anchors, or null for normal native trust.
+	 * @param anchors Exclusive scoped anchors.
 	 * @param at Validation time.
 	 * @return Successful owned SecTrust object or null.
 	 */
@@ -328,8 +313,8 @@ namespace {
 		if (!date || SecTrustSetVerifyDate(trust.get(), date.get()) != errSecSuccess
 			|| SecTrustSetNetworkFetchAllowed(trust.get(), false) != errSecSuccess)
 			return Owner<SecTrustRef>(nullptr, Release);
-		if (anchors && (SecTrustSetAnchorCertificates(trust.get(), anchors) != errSecSuccess
-			|| SecTrustSetAnchorCertificatesOnly(trust.get(), true) != errSecSuccess))
+		if (SecTrustSetAnchorCertificates(trust.get(), anchors) != errSecSuccess
+			|| SecTrustSetAnchorCertificatesOnly(trust.get(), true) != errSecSuccess)
 			return Owner<SecTrustRef>(nullptr, Release);
 		CFErrorRef rawError = nullptr;
 		const bool accepted = SecTrustEvaluateWithError(trust.get(), &rawError);
@@ -337,7 +322,7 @@ namespace {
 		if (!accepted) {
 			StormByte::Crypto::Detail::TLSDiagnostic("macOS SecTrustEvaluateWithError",
 				error ? static_cast<unsigned long>(CFErrorGetCode(error.get())) : 0,
-				anchors ? "exclusive bundled/custom roots" : "macOS system roots");
+				"exclusive bundled/custom roots");
 			return Owner<SecTrustRef>(nullptr, Release);
 		}
 		return trust;
@@ -360,18 +345,15 @@ namespace {
 	}
 
 	/**
-	 * @brief Intersects explicit scoped anchors with independent native system TLS trust.
+	 * @brief Applies native TLS policy with exclusive caller-selected anchors.
 	 * @param leaf Server certificate.
 	 * @param intermediates Untrusted issuers.
 	 * @param anchors Exclusive permitted roots.
 	 * @param at Validation time.
-	 * @param requireSystem Whether independent OS policy is mandatory.
-	 * @param testSystem Test-only explicit system anchors, or null in production.
 	 * @return Path-only acceptance with no OS-root union or keychain mutation.
 	 */
 	bool ValidateNative(const Certificate& leaf, std::span<const Certificate> intermediates,
-		std::span<const Certificate> anchors, TimePoint at, bool requireSystem,
-		const std::span<const Certificate>* testSystem) {
+		std::span<const Certificate> anchors, TimePoint at) {
 		if (anchors.empty())
 			return false;
 		auto certificates = CertificateArray(std::span(&leaf, 1));
@@ -390,44 +372,15 @@ namespace {
 			return anchor.IsCA() && anchor.IsValidAt(at) && std::ranges::equal(bytes, anchor.Der().span());
 		}))
 			return false;
-		if (!requireSystem)
-			return true;
-		auto systemRoots = testSystem ? CertificateArray(*testSystem) : Owner<CFMutableArrayRef>(nullptr, Release);
-		if (testSystem && !systemRoots)
-			return false;
-		auto native = Evaluate(certificates.get(), systemRoots.get(), at);
-		auto nativeRoot = Terminal(native);
-		return nativeRoot && CFEqual(root.get(), nativeRoot.get());
+		return true;
 	}
 }
 #endif
 
-#ifdef WINDOWS
-#ifdef STORMBYTE_CRYPTO_TRUST_TESTING
-bool StormByte::Crypto::X509::Detail::NativeTrustPathForTest(const Certificate& leaf,
-	std::span<const Certificate> intermediates, std::span<const Certificate> anchors,
-	TimePoint at, std::span<const Certificate> systemAnchors) {
-	return ValidateNative(leaf, intermediates, anchors, at, true, &systemAnchors);
-}
-#else
+#if defined(WINDOWS) || defined(MACOS)
 bool StormByte::Crypto::X509::Detail::NativeTrustPath(const Certificate& leaf,
 	std::span<const Certificate> intermediates, std::span<const Certificate> anchors,
-	TimePoint at, bool requireSystem) {
-	return ValidateNative(leaf, intermediates, anchors, at, requireSystem, nullptr);
+	TimePoint at) {
+	return ValidateNative(leaf, intermediates, anchors, at);
 }
-#endif
-#elifdef MACOS
-#ifdef STORMBYTE_CRYPTO_TRUST_TESTING
-bool StormByte::Crypto::X509::Detail::NativeTrustPathForTest(const Certificate& leaf,
-	std::span<const Certificate> intermediates, std::span<const Certificate> anchors,
-	TimePoint at, std::span<const Certificate> systemAnchors) {
-	return ValidateNative(leaf, intermediates, anchors, at, true, &systemAnchors);
-}
-#else
-bool StormByte::Crypto::X509::Detail::NativeTrustPath(const Certificate& leaf,
-	std::span<const Certificate> intermediates, std::span<const Certificate> anchors,
-	TimePoint at, bool requireSystem) {
-	return ValidateNative(leaf, intermediates, anchors, at, requireSystem, nullptr);
-}
-#endif
 #endif

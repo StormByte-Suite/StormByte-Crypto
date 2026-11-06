@@ -67,7 +67,7 @@ namespace StormByte {
 				InvalidRequest,			///< Empty certificate, invalid identity or excessive chain length.
 				RootNotAdmitted,			///< No matching root belongs to the bundled server snapshot.
 				PeerPathRejected,		///< Linux's documented constrained verifier rejected the path.
-				NativePolicyRejected	///< Native TLS policy or intersection with native trust rejected it.
+				NativePolicyRejected	///< Native TLS policy rejected the explicitly anchored path.
 			};
 
 			/**
@@ -128,8 +128,8 @@ namespace StormByte {
 			 *
 			 * Linux uses only the embedded roots and the constrained TLSPeerVerifier subset,
 			 * including unsupported-constraint failures. It never consults distro, environment
-			 * or system CA files. Windows/macOS require BOTH scoped bundled anchors AND native
-			 * TLS policy with native system trust, with the same terminal root in both paths.
+			 * or system CA files. Windows/macOS apply native TLS policy with exclusive bundled
+			 * anchors; admission does not additionally require the OS to trust the root.
 			 * Network fetching is disabled. No CRL/OCSP validation or proof of key possession.
 			 * See doc/trust-path-validation.md for exclusions and exact policy limitations.
 			 */

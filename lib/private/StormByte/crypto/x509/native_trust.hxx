@@ -47,30 +47,14 @@
  * @brief Private, offline platform trust implementation.
  */
 namespace StormByte::Crypto::X509::Detail {
-#ifdef STORMBYTE_CRYPTO_TRUST_TESTING
 	/**
-	 * @brief Test-only native intersection with isolated fixture system anchors.
-	 * @param leaf Server certificate.
-	 * @param intermediates Untrusted issuer candidates.
-	 * @param anchors Exclusive admission roots.
-	 * @param at Validation time.
-	 * @param systemAnchors Exclusive memory/object-scoped simulated OS trust.
-	 * @return Whether both native policies accept the same admitted root.
-	 * @note Compiled only into the native test executable, never the production library.
-	 */
-	bool NativeTrustPathForTest(const Certificate& leaf, std::span<const Certificate> intermediates,
-		std::span<const Certificate> anchors, TimePoint at, std::span<const Certificate> systemAnchors);
-#else
-	/**
-	 * @brief Applies scoped native TLS policy and optional intersection with native OS trust.
+	 * @brief Applies native TLS policy using only the supplied trust anchors.
 	 * @param leaf Server certificate; SAN was independently checked by the caller.
 	 * @param intermediates Untrusted issuer candidates.
 	 * @param anchors Exclusive admission roots.
 	 * @param at Validation time.
-	 * @param requireSystem Whether normal OS root admission/distrust must also accept.
 	 * @return Whether native policy accepts; no revocation assertion.
 	 */
 	bool NativeTrustPath(const Certificate& leaf, std::span<const Certificate> intermediates,
-		std::span<const Certificate> anchors, TimePoint at, bool requireSystem);
-#endif
+		std::span<const Certificate> anchors, TimePoint at);
 }

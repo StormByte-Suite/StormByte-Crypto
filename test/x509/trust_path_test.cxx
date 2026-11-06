@@ -138,13 +138,12 @@ int test_public_reference_paths() {
 	using namespace PublicChainFixtures;
 	const std::array chain{Cert(ProductionIntermediate)};
 	const auto leaf = Cert(ProductionLeaf);
-#ifdef WINDOWS
-	// Public native OS admission is host policy, not a portable fixture assertion.
-	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, ReferenceTime, DNS("wrong.example.com")));
-#elifdef MACOS
-	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, ReferenceTime, DNS("wrong.example.com")));
-#else
 	ASSERT_TRUE(static_cast<bool>(ValidateBundledTLSPath(leaf, chain, ReferenceTime, DNS("api-m.paypal.com"))));
+	ASSERT_TRUE(static_cast<bool>(ValidateBundledTLSPath(Cert(SandboxLeaf),
+		std::array{Cert(SandboxIntermediate)}, ReferenceTime, DNS("api-m.sandbox.paypal.com"))));
+	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, ReferenceTime, DNS("wrong.example.com")));
+	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, leaf.NotAfter() + std::chrono::seconds(1), DNS("api-m.paypal.com")));
+#if !defined(WINDOWS) && !defined(MACOS)
 	const auto roots = LoadBundledTLSRoots();
 	ASSERT_TRUE(static_cast<bool>(roots));
 	bool digicert = false;
@@ -159,10 +158,7 @@ int test_public_reference_paths() {
 		digicert = true;
 	}
 	ASSERT_TRUE(digicert);
-	ASSERT_TRUE(static_cast<bool>(ValidateBundledTLSPath(Cert(SandboxLeaf),
-		std::array{Cert(SandboxIntermediate)}, ReferenceTime, DNS("api-m.sandbox.paypal.com"))));
 	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, {}, ReferenceTime, DNS("api-m.paypal.com")));
-	ASSERT_TRUE(!ValidateBundledTLSPath(leaf, chain, leaf.NotAfter() + std::chrono::seconds(1), DNS("api-m.paypal.com")));
 	const auto root = std::ranges::find_if(*roots, [](const Certificate& candidate) {
 		return static_cast<std::string_view>(candidate.SubjectCommonName()) == "DigiCert Global Root G2";
 	});

@@ -49,11 +49,11 @@ Server-auth EKU and `CERT_CHAIN_POLICY_SSL` must pass without ignored errors.
 CryptoAPI's current-OS strong-signature policy is requested explicitly.
 The actual terminal root must exactly match an admitted, time-valid CA.
 
-Separately, the normal Windows trust engine evaluates native root admission,
-distrust and TLS policy. It must succeed with the **same terminal root**.
-An OS-only root cannot pass the exclusive evaluation; a bundle-only or
-OS-distrusted root cannot pass the normal evaluation. AIA retrieval and automatic
-auth-root update are disabled, and URL retrieval is cache-only.
+There is no second evaluation against the Windows root store: bundled admission
+does not depend on a root being installed or admitted by Windows. OS-only roots
+cannot widen the exclusive anchor set. AIA retrieval and automatic auth-root
+update are disabled, and URL retrieval is cache-only. Native TLS policy still
+applies to the explicitly anchored chain; no policy error is ignored.
 
 ### macOS
 
@@ -61,10 +61,10 @@ Security.framework evaluates `SecPolicyCreateSSL` in a private SecTrust object,
 with explicit bundled anchors and `SecTrustSetAnchorCertificatesOnly(true)`.
 The actual root must exactly match an admitted, time-valid CA.
 
-A separate SecTrust evaluation with normal native trust settings must accept
-the **same terminal root**, preserving native root distrust/policy instead of
-overriding it with explicit-anchor trust. Both objects have network fetching
-disabled. No keychain is modified.
+There is no separate evaluation requiring keychain root admission. As on Linux
+and Windows, the bundle selects the anchors, while native TLS policy applies to
+that explicitly anchored chain. Network fetching is disabled. No keychain is
+modified.
 
 Native platforms may build paths from supplied certificates and native cached
 issuers; Linux never does. This operation supplies no requested policy OIDs,
@@ -136,13 +136,14 @@ Top-level CTest discovery is enabled when `ENABLE_TEST` is on, so both
 `ctest --test-dir build` and `ctest --test-dir build/test` run the suite.
 
 With `ENABLE_TEST=ON`, macOS/Windows also compile `X509NativeTrustTests`.
-Its separately compiled private test helper uses exclusive memory roots on
-Windows and explicit object-scoped SecTrust anchors on macOS to simulate native
-trust, **never OS-store/keychain mutation**. The test-only symbol and fixture
-system-root injection do not exist in the production library. Tests exercise
-the two-sided admission intersection, purpose/path-length/signature/time
-failures, and the public RSA chain with isolated roots. Those native tests are
-prepared for the existing CI matrix; they have not been run on Linux.
+It compiles the production private native validator and diagnostic helper
+directly into the executable, using exclusive memory roots on Windows and
+explicit object-scoped SecTrust anchors on macOS, **never OS-store/keychain
+mutation**. Tests accept an explicit fixture root without installing it in the
+OS, reject unrelated or empty anchors even when the correct root is supplied
+as an untrusted candidate, and cover purpose/path-length/signature/time failures
+and the public RSA chain with isolated roots. These native tests require
+Windows or macOS and cannot be run on Linux.
 
 Public reference certificates were captured on **2026-10-31** with bounded
 OpenSSL probes of `api-m.paypal.com` and `api-m.sandbox.paypal.com`, without API
