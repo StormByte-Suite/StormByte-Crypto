@@ -20,7 +20,15 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.1...HEAD
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.2...HEAD
+
+## [3.0.2] - 2026-11-09
+
+### Fixed
+
+- Fix TLS test certificate creation with OpenSSL 4.x by constructing the subject name separately and assigning it with `X509_set_subject_name`, preserving compatibility with OpenSSL 3.x.
+
+[3.0.2]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.1...3.0.2
 
 ## [3.0.1] - 2026-11-06
 
