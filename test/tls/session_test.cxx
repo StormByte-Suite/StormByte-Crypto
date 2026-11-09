@@ -66,6 +66,7 @@ namespace TLS = StormByte::Crypto::TLS;
 namespace {
 	using Key = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
 	using Certificate = std::unique_ptr<::X509, decltype(&X509_free)>;
+	using Name = std::unique_ptr<X509_NAME, decltype(&X509_NAME_free)>;
 	using Bio = std::unique_ptr<BIO, decltype(&BIO_free)>;
 
 	constexpr std::array ServerALPN{
@@ -135,12 +136,13 @@ namespace {
 			|| X509_set_pubkey(certificate.get(), public_key) != 1)
 			return {nullptr, X509_free};
 
-		X509_NAME* subject = X509_get_subject_name(certificate.get());
-		if (!subject || X509_NAME_add_entry_by_txt(subject, "CN", MBSTRING_ASC,
-			reinterpret_cast<const unsigned char*>(common_name), -1, -1, 0) != 1)
+		Name subject(X509_NAME_new(), X509_NAME_free);
+		if (!subject || X509_NAME_add_entry_by_txt(subject.get(), "CN", MBSTRING_ASC,
+			reinterpret_cast<const unsigned char*>(common_name), -1, -1, 0) != 1
+			|| X509_set_subject_name(certificate.get(), subject.get()) != 1)
 			return {nullptr, X509_free};
 		if (X509_set_issuer_name(certificate.get(),
-			issuer ? X509_get_subject_name(issuer) : subject) != 1)
+			issuer ? X509_get_subject_name(issuer) : subject.get()) != 1)
 			return {nullptr, X509_free};
 
 		if (!AddExtension(certificate.get(), issuer ? issuer : certificate.get(),
