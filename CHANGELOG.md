@@ -20,13 +20,17 @@ If you landed here from a release link and have not read the tree:
 
 ## [Unreleased]
 
+[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.1.0...HEAD
+
+## [3.1.0] - 2026-11-10
+
 ### Changed
 
 - Require StormByte-Buffer 4.0.0. Crypto's FIFO and Producer/Consumer stream APIs
   retain their existing signatures; Crypto does not use Buffer's removed
   scalar IO constructors, virtual policy overrides or changed Hopper/Sink state.
 
-[Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.2...HEAD
+[3.1.0]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.2...3.1.0
 
 ## [3.0.2] - 2026-11-09
 
