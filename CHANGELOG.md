@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 StormByte Crypto is the cryptography module of the StormByte C++ suite.
 
-It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 3.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
+It depends on [StormByte Base](https://github.com/StormByte-Suite/StormByte/releases/tag/3.0.0) 3.0.0, [StormByte Buffer](https://github.com/StormByte-Suite/StormByte-Buffer) 4.0.0, [StormByte-Logger](https://github.com/StormByte-Suite/StormByte-Logger) 3.0.0 and [StormByte System](https://github.com/StormByte-Suite/StormByte-System) 3.0.0. Base, Logger and System are declared here: Buffer no longer brings them as submodules. This repository is not Base, Buffer, Config, Database, Logger, Multimedia, Network or System.
 
 Public headers under `StormByte/crypto/` cover Hasher, Compressor, Crypter (symmetric and asymmetric), Signer, Secret, KeyPair, X509, Random, Password, Vault and TLS sessions. Crypto++ and OpenSSL remain private backends; installed headers expose neither library's types.
 
@@ -19,6 +19,12 @@ If you landed here from a release link and have not read the tree:
 - License: GNU Lesser General Public License version 3 or later, [LICENSE](https://github.com/StormByte-Suite/StormByte-Crypto/blob/master/LICENSE)
 
 ## [Unreleased]
+
+### Changed
+
+- Require StormByte-Buffer 4.0.0. Crypto's FIFO and Producer/Consumer stream APIs
+  retain their existing signatures; Crypto does not use Buffer's removed
+  scalar IO constructors, virtual policy overrides or changed Hopper/Sink state.
 
 [Unreleased]: https://github.com/StormByte-Suite/StormByte-Crypto/compare/3.0.2...HEAD
 
